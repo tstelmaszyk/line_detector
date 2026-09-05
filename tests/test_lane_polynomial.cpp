@@ -21,6 +21,7 @@ TEST_CASE( "fit retrouve une parabole connue x = 2y^2 + 3y + 5" )
   CHECK( poly.quadratic_coefficient == doctest::Approx( 2.0 ).epsilon( 0.01 ) );
   CHECK( poly.linear_coefficient == doctest::Approx( 3.0 ).epsilon( 0.05 ) );
   CHECK( poly.constant_coefficient == doctest::Approx( 5.0 ).epsilon( 1.0 ) );
+  CHECK( poly.point_count == static_cast< int >( points.size() ) );
 }
 
 TEST_CASE( "fit renvoie invalid si trop peu de points" )
@@ -30,6 +31,16 @@ TEST_CASE( "fit renvoie invalid si trop peu de points" )
   const LanePolynomial poly = LanePolynomial::fit( points );
 
   CHECK_FALSE( poly.valid );
+}
+
+TEST_CASE( "fit renseigne point_count meme quand invalid" )
+{
+  const ::std::vector< ::cv::Point > points = { { 10, 0 }, { 12, 5 } };
+
+  const LanePolynomial poly = LanePolynomial::fit( points );
+
+  CHECK_FALSE( poly.valid );
+  CHECK( poly.point_count == 2 );
 }
 
 TEST_CASE( "eval_at evalue le polynome" )

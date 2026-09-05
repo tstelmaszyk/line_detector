@@ -19,6 +19,7 @@ struct LanePolynomial
   double linear_coefficient = 0.0;     ///< Coefficient du terme y.
   double constant_coefficient = 0.0;   ///< Terme constant.
   bool valid = false;                  ///< true si le fit a réussi.
+  int point_count = 0;                 ///< Nombre de points reçus en entrée du fit (0 si aucun).
 
   /// @brief Évalue x pour un y donné.
   /// @param p_y Ordonnée (pixels BEV).

@@ -35,6 +35,7 @@ LanePolynomial LanePolynomial::fit( const ::std::vector< ::cv::Point >& p_points
   LanePolynomial poly;
 
   const int point_count = static_cast< int >( p_points.size() );
+  poly.point_count = point_count;
 
   if ( point_count < p_min_points )
     {
