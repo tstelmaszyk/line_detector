@@ -23,6 +23,11 @@ static void configure_synthetic_bev_trapezoid( LaneConfig& p_config )
   p_config.src_top_width_ratio = 0.18f;
   p_config.src_bottom_y_ratio = 1.0f;
   p_config.src_bottom_width_ratio = 0.5f;
+  // Trapeze synthetique non representatif d'une vraie perspective camera :
+  // LaneQuality::evaluate ne demoterait pas ces fits reels, seule cette
+  // calibration de test approximative le fait -- ce test n'exerce pas le
+  // critere de largeur de LaneQuality.
+  p_config.max_width_ratio_variation = 10.0;
 }
 
 TEST_CASE( "render produit une image a la taille d'origine" )

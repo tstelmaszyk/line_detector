@@ -10,6 +10,7 @@
 #include "LaneMask/LaneMask.h"
 #include "LaneModel/LaneModel.h"
 #include "LaneOverlay/LaneOverlay.h"
+#include "LaneQuality/LaneQuality.h"
 #include "PerspectiveView/PerspectiveView.h"
 #include "SlidingWindowSearch/SlidingWindowSearch.h"
 #include "VideoCaracteristics/VideoCaracteristics.h"
@@ -50,5 +51,6 @@ class DetectLines
     LaneMask m_mask;                                 ///< Étape masque binaire.
     PerspectiveView m_perspective;                   ///< Étape BEV.
     SlidingWindowSearch m_search;                    ///< Étape fenêtres glissantes.
+    LaneQuality m_quality;                            ///< Étape confiance (avant LaneGeometry).
     LaneOverlay m_overlay;                            ///< Étape rendu (déclarée après m_perspective).
   };

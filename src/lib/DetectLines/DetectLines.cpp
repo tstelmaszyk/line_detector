@@ -29,6 +29,7 @@ DetectLines::DetectLines( const VideoCaracteristics& p_video,
     m_mask( p_video, p_config, p_debug_sink ),
     m_perspective( p_video, p_config, p_debug_sink ),
     m_search( p_video, p_config, p_debug_sink ),
+    m_quality( p_video, p_config, p_debug_sink ),
     m_overlay( m_perspective, p_debug_sink )
 {
 }
@@ -74,6 +75,8 @@ LaneModel DetectLines::compute( const ::cv::Mat& p_frame ) const
   LaneModel model;
   model.left = LanePolynomial::fit( pixels.left, m_config.window_min_pix );
   model.right = LanePolynomial::fit( pixels.right, m_config.window_min_pix );
+
+  model = m_quality.evaluate( bev, model );
 
   model = LaneGeometry::compute( model, m_video_properties, m_config );
 
