@@ -18,4 +18,8 @@ TEST_CASE( "LaneConfig fournit des valeurs par defaut saines" )
   CHECK( config.src_bottom_y_ratio > 0.0f );
   CHECK( config.src_bottom_y_ratio <= 1.0f );
   CHECK( config.default_lane_width_px == doctest::Approx( 0.0 ) );
+
+  CHECK( config.min_quality_points > 0 );
+  CHECK( config.min_quality_points > config.window_min_pix );
+  CHECK( config.max_width_ratio_variation > 1.0 );
 }

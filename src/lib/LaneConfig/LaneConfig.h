@@ -45,4 +45,8 @@ struct LaneConfig
 
   // --- Reconstruction / sanité (LaneGeometry) ---
   PixelOffset default_lane_width_px = 0.0;  ///< 0 = pas de reconstruction du côté manquant.
+
+  // --- Qualité / confiance (LaneQuality) ---
+  int min_quality_points = 150;              ///< Pixels mini/côté pour faire confiance au fit (> window_min_pix).
+  double max_width_ratio_variation = 1.5;    ///< Ratio largeur max/min toléré entre bas/milieu/haut de la BEV.
   };
