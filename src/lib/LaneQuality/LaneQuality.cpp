@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "LaneQuality/LaneQuality.h"
+#include "SmartAssert/SmartAssert.h"
 
 namespace
 {
@@ -142,6 +143,12 @@ void LaneQuality::draw_debug_trace( const ::cv::Mat& p_bev,
                                     const LanePolynomial& p_right,
                                     const ::std::string& p_reason ) const
 {
+  const bool is_empty = p_bev.empty();
+  const bool is_single_channel = ( p_bev.type() == CV_8UC1 );
+
+  SMART_ASSERT( !is_empty, "LaneQuality: BEV vide" );
+  SMART_ASSERT( is_single_channel, "LaneQuality: attend un binaire mono-canal" );
+
   ::cv::Mat canvas;
   ::cv::cvtColor( p_bev, canvas, ::cv::COLOR_GRAY2BGR );
 
