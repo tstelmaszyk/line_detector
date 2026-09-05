@@ -70,17 +70,18 @@ sur `stdout`, ni ne sait qu'une caméra existe.
         │
         │  3. suivre chaque ligne             →  nuage de pixels gauche / droite
         │  4. ajuster une courbe              →  x = a·y² + b·y + c, par côté
-        │  5. en déduire la géométrie         →  offset + rayon de courbure
+        │  5. vérifier la confiance du fit    →  démote un côté douteux (valid=false)
+        │  6. en déduire la géométrie         →  offset + rayon de courbure
         ▼
    LaneModel (le signal de pilotage, sorti en CSV sur stdout)
         │
-        │  6. rendu, seulement si demandé     →  overlay sur l'image d'origine
+        │  7. rendu, seulement si demandé     →  overlay sur l'image d'origine
         ▼
    image annotée (out/output.jpg ou out/output.avi, avec --record)
 ```
 
-Les étapes 1 à 5 sont regroupées dans `DetectLines::compute()`, qui ne dessine
-rien et renvoie uniquement le `LaneModel`. L'étape 6, `DetectLines::render()`,
+Les étapes 1 à 6 sont regroupées dans `DetectLines::compute()`, qui ne dessine
+rien et renvoie uniquement le `LaneModel`. L'étape 7, `DetectLines::render()`,
 en est délibérément séparée : elle prend un `LaneModel` déjà calculé et une
 image, et produit l'image annotée. Cette séparation est ce qui permet au mode
 sans `--record` de sauter entièrement le rendu — `render_ms` reste à zéro,
@@ -228,7 +229,36 @@ une fenêtre), l'ajustement est jugé non fiable : le polynôme reste
 `valid = false` plutôt que de produire une courbe construite sur trop peu
 d'information.
 
-### 5. En déduire le signal de pilotage (`LaneGeometry`)
+### 5. Vérifier la confiance du fit (`LaneQuality`)
+
+Un fit peut réussir numériquement (assez de points pour `cv::solve`) tout en
+étant géométriquement absurde — typiquement une caméra mal orientée, où le
+masque capte du bruit des deux côtés qui converge ou diverge fortement plutôt
+que de suivre deux marquages réellement parallèles. `LaneQuality` s'intercale
+ici, avant que `LaneGeometry` ne calcule le signal, et démote
+(`LanePolynomial::valid = false`) tout côté qui n'est pas digne de confiance,
+selon deux critères indépendants :
+
+- **Pixels insuffisants** — un côté dont `LanePolynomial::point_count` reste
+  sous `min_quality_points` (150 par défaut, un seuil plus strict que
+  `window_min_pix` qui ne garantit que la faisabilité numérique du fit, pas sa
+  fiabilité) est démoté seul.
+- **Largeur de voie incohérente** — si les deux côtés restent valides après le
+  critère précédent, on échantillonne la largeur de voie
+  (`x_right(y) - x_left(y)`) en bas, au milieu et en haut de la BEV. Si une
+  largeur est quasi nulle ou négative (lignes croisées) ou si le ratio
+  max/min dépasse `max_width_ratio_variation` (1.5 par défaut), **les deux**
+  côtés sont démotés — impossible de savoir lequel des deux fits ment.
+
+Le rejet reste un pur aléa de la route (drapeau, jamais un `SMART_ASSERT`) :
+une image mal cadrée est une situation normale à signaler, pas un bug. Un côté
+démoté redevient ensuite un côté manquant ordinaire pour `LaneGeometry`, qui
+le reconstruit par décalage si `default_lane_width_px` est réglé, ou fait
+retomber `lane_detected` à `false` si les deux côtés sont démotés. Aucun champ
+n'est ajouté à `LaneModel` : le rejet reste visible uniquement via
+`lane_detected = false`, exactement comme un côté manquant aujourd'hui.
+
+### 6. En déduire le signal de pilotage (`LaneGeometry`)
 
 C'est ici que les deux polynômes deviennent un offset et un rayon de courbure.
 
@@ -282,7 +312,7 @@ inférieur à `1e-9`, la voie est considérée droite au sens numérique et le
 rayon est fixé arbitrairement à `1e12` px plutôt que de laisser une division
 par une valeur proche de zéro produire un résultat instable.
 
-### 6. Rendu (`LaneOverlay`, optionnel)
+### 7. Rendu (`LaneOverlay`, optionnel)
 
 Cette étape ne s'exécute que si un observateur réclame l'image annotée (donc
 seulement avec `--record`, cf. plus bas). Elle prend le `LaneModel` déjà
@@ -324,14 +354,16 @@ elle-même rende visible qu'ils n'appartiennent à aucune des deux couches.
 
 ### Orchestration (`DetectLines`)
 
-`DetectLines` assemble les six étapes et expose deux méthodes seulement :
-`compute()` (étapes 1 à 5, renvoie un `LaneModel`) et `render()` (étape 6,
+`DetectLines` assemble les sept étapes et expose deux méthodes seulement :
+`compute()` (étapes 1 à 6, renvoie un `LaneModel`) et `render()` (étape 7,
 dessine un `LaneModel` déjà calculé). Elle possède ses sous-composants par
-valeur (`LaneMask`, `PerspectiveView`, `SlidingWindowSearch`, `LaneOverlay`),
-tous construits à partir des mêmes `VideoCaracteristics` et `LaneConfig` —
-l'ordre de déclaration compte ici : `m_overlay` est déclaré après
-`m_perspective` car il détient une référence dessus, et l'ordre de
-construction des membres suit l'ordre de déclaration en C++.
+valeur (`LaneMask`, `PerspectiveView`, `SlidingWindowSearch`, `LaneQuality`,
+`LaneOverlay`), tous construits à partir des mêmes `VideoCaracteristics` et
+`LaneConfig` — l'ordre de déclaration compte ici : `m_overlay` est déclaré
+après `m_perspective` car il détient une référence dessus, et l'ordre de
+construction des membres suit l'ordre de déclaration en C++ ; `m_quality` ne
+détient aucune référence de ce type, sa place dans l'ordre reflète seulement
+sa place dans le pipeline.
 
 Deux structures traversent tout le pipeline :
 
@@ -418,8 +450,9 @@ d'être calculées puis jetées.
 | `src/lib/PerspectiveView/` | étape 2 — vue de dessus et homographies |
 | `src/lib/SlidingWindowSearch/` | étape 3 — histogramme + fenêtres glissantes |
 | `src/lib/LanePolynomial/` | étape 4 — ajustement polynomial (moindres carrés) |
-| `src/lib/LaneGeometry/` | étape 5 — offset, courbure, reconstruction |
-| `src/lib/LaneOverlay/` | étape 6 — rendu de l'overlay et du HUD |
+| `src/lib/LaneQuality/` | étape 5 — rejet des fits geometriquement incoherents |
+| `src/lib/LaneGeometry/` | étape 6 — offset, courbure, reconstruction |
+| `src/lib/LaneOverlay/` | étape 7 — rendu de l'overlay et du HUD |
 | `src/lib/LaneConfig/` | tous les réglages numériques du pipeline |
 | `src/lib/LaneModel/` | structure de résultat (le signal de pilotage) |
 | `src/lib/ImageSink/` | écriture d'image (résultat et debug), `Disk`/`Null` |
@@ -672,13 +705,16 @@ LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector -
 | `out/debug_02a_trapeze.jpg` | trapèze source superposé à l'image couleur | `LINE_DETECTOR_DEBUG` |
 | `out/debug_02b_bev_color.jpg` | vue de dessus en couleur (pas seulement le masque) | `LINE_DETECTOR_DEBUG` |
 | `out/debug_03_windows.jpg` | fenêtres glissantes, pixels gauche en rouge / droite en bleu | `LINE_DETECTOR_DEBUG` |
-| `out/debug_04_fit.jpg` | polynômes ajustés tracés sur la vue de dessus | `LINE_DETECTOR_DEBUG` |
+| `out/debug_04_fit.jpg` | polynômes ajustés tracés sur la vue de dessus | `LINE_DETECTOR_DEBUG`, **si** `LaneQuality` ne rejette aucun côté |
+| `out/debug_04b_quality.jpg` | fits d'origine + raison du rejet (largeur incohérente ou pixels insuffisants) | `LINE_DETECTOR_DEBUG`, **si** `LaneQuality` rejette au moins un côté |
 | `out/debug_05_overlay.jpg` | overlay final, identique à `out/output.jpg` | `LINE_DETECTOR_DEBUG` **et** `--record` |
 
 `debug_05_overlay.jpg` est le seul qui demande en plus `--record` : il vient
-de l'étape de rendu (étape 6), qui n'est exécutée que si un observateur la
-réclame — les cinq autres traces viennent toutes de `compute()`, exécuté dans
-tous les cas.
+de l'étape de rendu (étape 7), qui n'est exécutée que si un observateur la
+réclame. `debug_04_fit.jpg` et `debug_04b_quality.jpg` sont mutuellement
+exclusifs — le premier suppose que `LaneQuality` (étape 5) n'a rien démoté, le
+second n'existe que si elle l'a fait. Toutes les autres traces viennent de
+`compute()`, exécuté dans tous les cas.
 
 En mode flux (vidéo ou caméra), les noms de fichiers sont fixes : chaque frame
 écrase la précédente, seule la dernière subsiste. C'est voulu — ces traces
