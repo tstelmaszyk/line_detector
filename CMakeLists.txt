@@ -14,6 +14,7 @@ set(LANE_SOURCES
     src/lib/LanePolynomial/LanePolynomial.cpp
     src/lib/LaneGeometry/LaneGeometry.cpp
     src/lib/LaneMask/LaneMask.cpp
+    src/lib/LaneQuality/LaneQuality.cpp
     src/lib/PerspectiveView/PerspectiveView.cpp
     src/lib/SlidingWindowSearch/SlidingWindowSearch.cpp
     src/lib/LaneOverlay/LaneOverlay.cpp
