@@ -26,6 +26,7 @@
 #include "ImageSink/ImageSink.h"
 #include "ImageSink/NullImageSink.h"
 #include "LaneConfig/LaneConfig.h"
+#include "LaneTracker/LaneTracker.h"
 #include "PipelineRunner/PipelineRunner.h"
 #include "RunStats/RunStats.h"
 #include "VideoCaracteristics/VideoCaracteristics.h"
@@ -177,6 +178,7 @@ int main( int argc, char** argv )
     static_cast< double >( video_properties.width_pixel ) * DEFAULT_LANE_WIDTH_RATIO;
 
   const DetectLines detector( video_properties, config, *debug_sink );
+  LaneTracker tracker( video_properties, config, *debug_sink );
 
   // 6. Observateurs : le log CSV est toujours present ; les ecritures ne le sont
   // que si --record est passe. Sans writer, aucun observateur ne reclame l'image
@@ -212,7 +214,7 @@ int main( int argc, char** argv )
   ::std::signal( SIGINT, handle_interrupt );
 
   // 8. Boucle.
-  PipelineRunner runner( *frame_source, detector, observers, g_stop_requested );
+  PipelineRunner runner( *frame_source, detector, tracker, observers, g_stop_requested );
   RunStats stats;
   const int run_status = runner.run( first_frame, stats );
 
