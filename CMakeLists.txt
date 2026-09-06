@@ -18,6 +18,7 @@ set(LANE_SOURCES
     src/lib/PerspectiveView/PerspectiveView.cpp
     src/lib/SlidingWindowSearch/SlidingWindowSearch.cpp
     src/lib/LaneOverlay/LaneOverlay.cpp
+    src/lib/LaneTracker/LaneTracker.cpp
 )
 
 add_library( line_detector_lib STATIC ${LANE_SOURCES} )
