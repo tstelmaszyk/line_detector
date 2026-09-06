@@ -29,10 +29,12 @@ DurationMs elapsed_ms_since( const ::std::chrono::steady_clock::time_point& p_st
 
 PipelineRunner::PipelineRunner( FrameSource& p_frame_source,
                                 const DetectLines& p_detector,
+                                LaneTracker& p_tracker,
                                 const ::std::vector< FrameObserver* >& p_observers,
                                 const ::std::atomic< bool >& p_stop_requested )
   : m_frame_source( p_frame_source ),
     m_detector( p_detector ),
+    m_tracker( p_tracker ),
     m_observers( p_observers ),
     m_stop_requested( p_stop_requested ),
     m_render_needed( false )
@@ -57,7 +59,8 @@ bool PipelineRunner::process_frame( const ::cv::Mat& p_frame, FrameIndex p_frame
 {
   const ::std::chrono::steady_clock::time_point compute_start = ::std::chrono::steady_clock::now();
 
-  const LaneModel model = m_detector.compute( p_frame );
+  const LaneModel raw_model = m_detector.compute( p_frame );
+  const LaneModel model = m_tracker.update( raw_model );
 
   const DurationMs compute_ms = elapsed_ms_since( compute_start );
 

@@ -13,6 +13,7 @@
 #include "ImageSink/NullImageSink.h"
 #include "LaneConfig/LaneConfig.h"
 #include "LaneModel/LaneModel.h"
+#include "LaneTracker/LaneTracker.h"
 #include "PipelineRunner/PipelineRunner.h"
 #include "RunStats/RunStats.h"
 #include "VideoCaracteristics/VideoCaracteristics.h"
@@ -134,6 +135,9 @@ TEST_CASE( "mode video : une voie qui derive produit un offset monotone" )
   // calibration de test approximative le fait -- ce test n'exerce pas le
   // critere de largeur de LaneQuality.
   config.max_width_ratio_variation = 10.0;
+  // Tracker desactive : ce test verifie la derive du signal BRUT a travers
+  // SlidingWindowSearch/LaneGeometry, pas le lissage (couvert par test_lane_tracker.cpp).
+  config.lane_tracker_enabled = false;
   NullImageSink debug_sink;
   const DetectLines detector( video, config, debug_sink );
 
@@ -143,7 +147,8 @@ TEST_CASE( "mode video : une voie qui derive produit un offset monotone" )
   observers.push_back( &recorder );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 

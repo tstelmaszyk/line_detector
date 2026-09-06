@@ -13,6 +13,7 @@
 #include "ImageSink/NullImageSink.h"
 #include "LaneConfig/LaneConfig.h"
 #include "LaneModel/LaneModel.h"
+#include "LaneTracker/LaneTracker.h"
 #include "PipelineRunner/PipelineRunner.h"
 #include "RunStats/RunStats.h"
 #include "VideoCaracteristics/VideoCaracteristics.h"
@@ -237,7 +238,8 @@ TEST_CASE( "PipelineRunner : traite toutes les frames et compte les stats" )
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 
@@ -265,7 +267,8 @@ TEST_CASE( "PipelineRunner : arret demande -> une seule frame traitee" )
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( true );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 
@@ -289,7 +292,8 @@ TEST_CASE( "PipelineRunner : premiere frame vide -> echec" )
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const ::cv::Mat empty_frame;
   const int status = runner.run( empty_frame, stats );
@@ -314,7 +318,8 @@ TEST_CASE( "PipelineRunner : observateur en echec definitif -> arret anticipe" )
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 
@@ -337,7 +342,8 @@ TEST_CASE( "PipelineRunner : aucun observateur n'exploite l'image -> pas de rend
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 
@@ -365,7 +371,8 @@ TEST_CASE( "PipelineRunner : un observateur exploite l'image -> rendu execute" )
   observers.push_back( &observer );
   const ::std::atomic< bool > stop_requested( false );
 
-  PipelineRunner runner( source, detector, observers, stop_requested );
+  LaneTracker tracker( video, config, debug_sink );
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
   RunStats stats;
   const int status = runner.run( first_frame, stats );
 
@@ -374,4 +381,104 @@ TEST_CASE( "PipelineRunner : un observateur exploite l'image -> rendu execute" )
   CHECK( EXIT_SUCCESS == status );
   CHECK( RUNNER_TEST_WIDTH == received_size.width );
   CHECK( RUNNER_TEST_HEIGHT == received_size.height );
+}
+
+TEST_CASE( "PipelineRunner : appelle le LaneTracker (coasting sur une frame sans detection)" )
+{
+  const ::cv::Mat first_frame = make_lane_frame( RUNNER_LEFT_LINE_X, RUNNER_RIGHT_LINE_X );
+  VideoCaracteristics video( first_frame );
+  LaneConfig config;
+  config.default_lane_width_px = RUNNER_TEST_WIDTH * RUNNER_LANE_WIDTH_RATIO;
+  config.lane_tracker_max_coast_frames = 5;
+  // Trapeze BEV attendu par make_lane_frame (lignes de mi-hauteur au bas,
+  // plein cadre) : la calibration par defaut de LaneConfig vise la camera
+  // reelle et ne capte aucun pixel sur ce fixture synthetique (cf.
+  // configure_synthetic_bev_trapezoid dans test_detect_lines.cpp).
+  config.src_top_y_ratio = 0.45f;
+  config.src_top_width_ratio = 0.18f;
+  config.src_bottom_y_ratio = 1.0f;
+  config.src_bottom_width_ratio = 0.5f;
+  // Trapeze synthetique non representatif d'une vraie perspective camera :
+  // seule cette calibration de test approximative ferait echouer le critere
+  // de largeur de LaneQuality sur des lignes pourtant droites et paralleles.
+  config.max_width_ratio_variation = 10.0;
+  NullImageSink debug_sink;
+  const DetectLines detector( video, config, debug_sink );
+  LaneTracker tracker( video, config, debug_sink );
+
+  // Frame 0 : sans marquage (lane_detected=false). Frame 1 : avec marquages.
+  class MixedDetectionFrameSource : public FrameSource
+    {
+    public:
+      MixedDetectionFrameSource() : m_step( 0 ) { }
+
+      bool read( ::cv::Mat& p_frame ) override
+        {
+        if ( 0 == m_step )
+          {
+          const ::cv::Scalar background( RUNNER_BACKGROUND_GRAY, RUNNER_BACKGROUND_GRAY, RUNNER_BACKGROUND_GRAY );
+          p_frame = ::cv::Mat( RUNNER_TEST_HEIGHT, RUNNER_TEST_WIDTH, CV_8UC3, background );
+          ++m_step;
+          return true;
+          }
+
+        if ( 1 == m_step )
+          {
+          p_frame = make_lane_frame( RUNNER_LEFT_LINE_X, RUNNER_RIGHT_LINE_X );
+          ++m_step;
+          return true;
+          }
+
+        return false;
+        }
+
+    private:
+      int m_step;
+    };
+
+  class ModelRecorder : public FrameObserver
+    {
+    public:
+      ModelRecorder() : m_models() { }
+
+      void on_frame( int p_frame_index,
+                     const LaneModel& p_model,
+                     const ::cv::Mat& p_annotated_frame,
+                     double p_compute_ms,
+                     double p_render_ms ) override
+        {
+        (void) p_frame_index;
+        (void) p_annotated_frame;
+        (void) p_compute_ms;
+        (void) p_render_ms;
+        m_models.push_back( p_model );
+        }
+
+      bool needs_annotated_frame() const override { return false; }
+
+      const ::std::vector< LaneModel >& models() const { return m_models; }
+
+    private:
+      ::std::vector< LaneModel > m_models;
+    };
+
+  MixedDetectionFrameSource source;
+  ModelRecorder recorder;
+  ::std::vector< FrameObserver* > observers;
+  observers.push_back( &recorder );
+  const ::std::atomic< bool > stop_requested( false );
+
+  // Premiere frame (passee directement a run) : avec marquages -> detection fraiche.
+  PipelineRunner runner( source, detector, tracker, observers, stop_requested );
+  RunStats stats;
+  const int status = runner.run( first_frame, stats );
+
+  CHECK( EXIT_SUCCESS == status );
+  REQUIRE( 3 == static_cast< int >( recorder.models().size() ) );
+  CHECK( recorder.models()[0].lane_detected );
+  CHECK_FALSE( recorder.models()[0].coasted );
+  CHECK( recorder.models()[1].lane_detected );   // frame sans marquage -> coasting
+  CHECK( recorder.models()[1].coasted );
+  CHECK( recorder.models()[2].lane_detected );   // detection fraiche a nouveau
+  CHECK_FALSE( recorder.models()[2].coasted );
 }

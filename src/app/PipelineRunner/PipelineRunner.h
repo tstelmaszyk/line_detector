@@ -11,6 +11,7 @@
 #include "DetectLines/DetectLines.h"
 #include "FrameObserver/FrameObserver.h"
 #include "FrameSource/FrameSource.h"
+#include "LaneTracker/LaneTracker.h"
 #include "RunStats/RunStats.h"
 #include "projectTypes.h"
 
@@ -25,10 +26,12 @@ class PipelineRunner
     /// @brief Construit le runner.
     /// @param p_frame_source    Source de frames.
     /// @param p_detector        Pipeline de détection.
+    /// @param p_tracker         Lissage temporel du LaneModel entre compute() et render().
     /// @param p_observers       Observateurs notifiés à chaque frame.
     /// @param p_stop_requested  Drapeau d'arrêt (levé par le handler SIGINT).
     PipelineRunner( FrameSource& p_frame_source,
                     const DetectLines& p_detector,
+                    LaneTracker& p_tracker,
                     const ::std::vector< FrameObserver* >& p_observers,
                     const ::std::atomic< bool >& p_stop_requested );
 
@@ -49,6 +52,7 @@ class PipelineRunner
 
     FrameSource& m_frame_source;                      ///< Source de frames.
     const DetectLines& m_detector;                    ///< Pipeline de détection.
+    LaneTracker& m_tracker;                            ///< Lissage temporel du LaneModel.
     ::std::vector< FrameObserver* > m_observers;      ///< Observateurs notifiés.
     const ::std::atomic< bool >& m_stop_requested;    ///< Drapeau d'arrêt.
     bool m_render_needed;                             ///< true si au moins un observateur exploite l'image annotée.
