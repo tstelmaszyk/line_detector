@@ -162,3 +162,24 @@ TEST_CASE( "LaneTracker : reset() manuel efface l'etat" )
   CHECK( result.left.constant_coefficient == doctest::Approx( 900.0 ) );
   CHECK( result.right.constant_coefficient == doctest::Approx( 1300.0 ) );
 }
+
+TEST_CASE( "LaneTracker : coasting propage le reconstructed du dernier fit frais" )
+{
+  ::cv::Mat ref( 720, 1280, CV_8UC3 );
+  VideoCaracteristics video( ref );
+  LaneConfig config;
+  config.default_lane_width_px = 400.0;
+  NullImageSink sink;
+  LaneTracker tracker( video, config, sink );
+
+  LaneModel reconstructed_raw;
+  reconstructed_raw.left = straight( 440.0 );
+  reconstructed_raw = LaneGeometry::compute( reconstructed_raw, video, config );
+  REQUIRE( reconstructed_raw.reconstructed );
+
+  tracker.update( reconstructed_raw );
+  const LaneModel coasted = tracker.update( make_missed_model( video, config ) );
+
+  REQUIRE( coasted.coasted );
+  CHECK( coasted.reconstructed );
+}

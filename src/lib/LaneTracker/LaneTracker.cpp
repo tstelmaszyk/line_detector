@@ -52,6 +52,7 @@ LaneTracker::LaneTracker( const VideoCaracteristics& p_video,
     m_debug_sink( p_debug_sink ),
     m_smoothed_left(),
     m_smoothed_right(),
+    m_smoothed_reconstructed( false ),
     m_has_state( false ),
     m_miss_streak( 0 )
 {
@@ -61,6 +62,7 @@ void LaneTracker::reset()
 {
   m_smoothed_left = LanePolynomial();
   m_smoothed_right = LanePolynomial();
+  m_smoothed_reconstructed = false;
   m_has_state = false;
   m_miss_streak = 0;
 }
@@ -88,10 +90,12 @@ LaneModel LaneTracker::update( const LaneModel& p_raw_model )
       m_smoothed_right = blend_polynomial( m_smoothed_right, p_raw_model.right, m_config.lane_tracker_alpha );
       }
 
+    m_smoothed_reconstructed = p_raw_model.reconstructed;
+
     LaneModel smoothed_model;
     smoothed_model.left = m_smoothed_left;
     smoothed_model.right = m_smoothed_right;
-    smoothed_model.reconstructed = p_raw_model.reconstructed;
+    smoothed_model.reconstructed = m_smoothed_reconstructed;
     smoothed_model.coasted = false;
     smoothed_model = LaneGeometry::compute( smoothed_model, m_video_properties, m_config );
 
@@ -112,7 +116,7 @@ LaneModel LaneTracker::update( const LaneModel& p_raw_model )
     LaneModel coasted_model;
     coasted_model.left = m_smoothed_left;
     coasted_model.right = m_smoothed_right;
-    coasted_model.reconstructed = false;
+    coasted_model.reconstructed = m_smoothed_reconstructed;
     coasted_model.coasted = true;
     coasted_model = LaneGeometry::compute( coasted_model, m_video_properties, m_config );
 
