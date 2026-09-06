@@ -15,7 +15,7 @@ const char FIELD_SEPARATOR = ';';  ///< Séparateur de champs.
 
 const ::std::string CSV_HEADER =
   "frame_index;lane_detected;normalized_offset;lateral_offset_px;"
-  "curvature_radius_px;reconstructed;compute_ms;render_ms";  ///< En-tête du log.
+  "curvature_radius_px;reconstructed;coasted;compute_ms;render_ms";  ///< En-tête du log.
 
 const ::std::streamsize CSV_FIELD_PRECISION = 6;  ///< Decimales des champs flottants (format fixe).
 
@@ -46,6 +46,7 @@ void LaneModelLogger::on_frame( FrameIndex p_frame_index,
 
   const int lane_detected_flag = p_model.lane_detected ? 1 : 0;
   const int reconstructed_flag = p_model.reconstructed ? 1 : 0;
+  const int coasted_flag = p_model.coasted ? 1 : 0;
 
   m_output_stream << p_frame_index << FIELD_SEPARATOR
                   << lane_detected_flag << FIELD_SEPARATOR
@@ -53,6 +54,7 @@ void LaneModelLogger::on_frame( FrameIndex p_frame_index,
                   << p_model.lateral_offset_px << FIELD_SEPARATOR
                   << p_model.curvature_radius_px << FIELD_SEPARATOR
                   << reconstructed_flag << FIELD_SEPARATOR
+                  << coasted_flag << FIELD_SEPARATOR
                   << p_compute_ms << FIELD_SEPARATOR
                   << p_render_ms << "\n";
 }

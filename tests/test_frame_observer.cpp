@@ -198,3 +198,23 @@ TEST_CASE( "needs_annotated_frame : true pour les deux writers" )
   CHECK( true == image_needs_frame );
   CHECK( true == video_needs_frame );
 }
+
+TEST_CASE( "LaneModelLogger : colonne coasted, entre reconstructed et compute_ms" )
+{
+  ::std::ostringstream output;
+  LaneModelLogger logger( output );
+  const ::cv::Mat frame( OBSERVER_TEST_HEIGHT, OBSERVER_TEST_WIDTH, CV_8UC3, ::cv::Scalar( 0, 0, 0 ) );
+
+  LaneModel model = make_test_model( 0.0 );
+  model.coasted = true;
+  logger.on_frame( 0, model, frame, TEST_ELAPSED_MS, 0.0 );
+
+  const ::std::string text = output.str();
+
+  CHECK( ::std::string::npos != text.find(
+    "frame_index;lane_detected;normalized_offset;lateral_offset_px;"
+    "curvature_radius_px;reconstructed;coasted;compute_ms;render_ms" ) );
+  // reconstructed=0 (make_test_model), coasted=1 (force ci-dessus), compute_ms=12.500000.
+  CHECK( ::std::string::npos != text.find(
+    "0;1;0.000000;42.000000;1500.000000;0;1;12.500000;0.000000" ) );
+}
