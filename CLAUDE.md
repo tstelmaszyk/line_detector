@@ -26,12 +26,13 @@ de la lib (pas de dépendance ROS2, pas d'API pensée pour un seul
 consommateur). `line_detector_lib` reste indépendante de tout framework
 applicatif, cf. « Couche application ».
 
-**Mode vidéo incomplet** : le mode vidéo (fichier + caméra) lit et traite
-frame par frame, mais ne fait actuellement **aucun filtrage temporel** entre
-les frames (pas de lissage, pas de recherche autour du fit précédent) — le
-lissage temporel (`LaneTracker`) et le passage à une sortie métrique restent
-au programme, cf. roadmap dans `docs/superpowers/specs/` et section « Suite
-prévue ».
+**Mode vidéo** : le mode vidéo (fichier + caméra) lit et traite frame par
+frame, et lisse le `LaneModel` à travers les frames via `LaneTracker` (EMA sur
+les coefficients des polynômes de voie + coasting sur perte de détection
+courte), activable/désactivable par `LaneConfig::lane_tracker_enabled` — cf.
+`docs/superpowers/specs/2026-09-06-lane-tracker-design.md`. Restent au
+programme : recherche autour du fit précédent, correction de distorsion
+caméra, passage à une sortie métrique (cf. section « Suite prévue »).
 
 ## Compilation & exécution
 
@@ -66,7 +67,7 @@ observateur ne réclamant l'image annotée, `render` n'est jamais appelé
 
 **`stdout` / `stderr` sont séparés** : `stdout` ne porte **que** la ligne d'en-tête
 puis une ligne CSV par frame
-(`frame_index;lane_detected;normalized_offset;lateral_offset_px;curvature_radius_px;reconstructed;compute_ms;render_ms`,
+(`frame_index;lane_detected;normalized_offset;lateral_offset_px;curvature_radius_px;reconstructed;coasted;compute_ms;render_ms`,
 format `std::fixed`, jamais de notation scientifique) ; `stderr` porte tous les
 messages destinés à un humain (erreurs, résumé final frames/détections/ms/FPS —
 dont la part de rendu entre parenthèses —, chemin du résultat écrit si
@@ -146,6 +147,14 @@ dessine le résultat dans l'image de sortie. Étapes, dans l'ordre :
    à 5, qui appartiennent à `DetectLines::compute`, cette étape ne s'exécute que
    dans `DetectLines::render`** — elle est sautée si aucun observateur ne
    réclame l'image annotée (cf. « Couche application »).
+
+`LaneTracker` (`LaneTracker.cpp`) lisse le `LaneModel` entre les frames (EMA
+sur les coefficients de `LanePolynomial`, coasting sur perte de détection
+courte). Ce n'est **pas** une étape de `DetectLines::compute`/`render` : c'est
+le seul composant de `line_detector_lib` qui porte un état entre deux appels,
+et pour cette raison il n'est pas possédé par `DetectLines` (qui reste sans
+état, cf. « Couche application » ci-dessous) mais par `PipelineRunner`, qui
+appelle `update()` juste après `compute()` et avant `render()`.
 
 Types clés et possession :
 
@@ -240,13 +249,15 @@ Composants de `line_detector_app` :
   `debug_05_overlay.jpg` — écrit dans `LaneOverlay::render`, donc dans
   `DetectLines::render` — ne l'est **que si `--record` est passé**.
 - **`PipelineRunner` / `RunStats`** (`PipelineRunner.h/.cpp`) — possède la boucle,
-  et seulement elle : lire → `DetectLines::compute` → `DetectLines::render` (si
-  et seulement si un observateur le réclame, cf. ci-dessus) → notifier les
-  observateurs → compter dans un `RunStats` fourni par l'appelant (`compute_ms`
-  et `render_ms` accumulés séparément, non réinitialisé par `run`). S'arrête à
+  et seulement elle : lire → `DetectLines::compute` → `LaneTracker::update` (lissage
+  temporel, cf. Architecture ci-dessus) → `DetectLines::render` (si et seulement si un
+  observateur le réclame, cf. ci-dessus) → notifier les observateurs → compter dans un
+  `RunStats` fourni par l'appelant (`compute_ms` et `render_ms` accumulés séparément,
+  non réinitialisé par `run` ; `compute_ms` inclut `LaneTracker::update`). S'arrête à
   la fin du flux, sur le drapeau `SIGINT`, ou dès qu'un observateur signale
   `has_fatal_error()` — utile pour qu'un `out/` en échec d'écriture soit détecté
-  frame par frame plutôt qu'après coup.
+  frame par frame plutôt qu'après coup. Possède aussi le `LaneTracker` (référence
+  injectée par le constructeur, comme `DetectLines`).
 
 ## Design by contract
 
@@ -318,11 +329,12 @@ Distinction stricte, appliquée dans tout le pipeline :
   défaut fonctionnent (précision géométrique dégradée seulement).
 - **Traces de debug** : exécuter avec `LINE_DETECTOR_DEBUG` non vide
   (`LINE_DETECTOR_DEBUG=1 ./line_detector`) écrit les étapes intermédiaires :
-  `out/debug_01_mask.jpg`, `debug_02_bev.jpg`, `debug_03_windows.jpg` et
-  `debug_04_fit.jpg` sont écrits dès que la variable est définie (ils viennent de
-  `compute`) ; `debug_05_overlay.jpg` demande **en plus** `--record` (il vient de
-  `render`, cf. « Couche application »). Sans la variable, aucune trace
-  (`NullImageSink`). Choix **runtime** : pas d'option CMake.
+  `out/debug_01_mask.jpg`, `debug_02_bev.jpg`, `debug_03_windows.jpg`,
+  `debug_04_fit.jpg` et `debug_04c_tracker.jpg` (polynômes bruts vs lissés par
+  `LaneTracker`) sont écrits dès que la variable est définie ; `debug_05_overlay.jpg`
+  demande **en plus** `--record` (il vient de `render`, cf. « Couche application »).
+  Sans la variable, aucune trace (`NullImageSink`). Choix **runtime** : pas
+  d'option CMake.
 - **Conteneurisation** : `Dockerfile` (base `debian:bookworm-slim`) installe
   OpenCV via apt et compile le projet. `tools/make_test_image.py` (Pillow) génère
   des images de test dans `img_piste/` : `img2.jpg`, `straight.jpg`, `curved.jpg`,
@@ -336,7 +348,8 @@ Distinction stricte, appliquée dans tout le pipeline :
 
 ## Suite prévue
 
-Voir `docs/superpowers/specs/2026-07-10-roadmap-video-lissage-temporel.md`. Le
-mode vidéo (fichier + caméra, cf. Couche application ci-dessus) est fait ; reste
-au programme : `LaneTracker` (lissage temporel / Kalman), recherche autour du
-fit précédent, correction de distorsion caméra, passage métrique.
+Voir `docs/superpowers/specs/2026-09-06-lane-tracker-design.md` pour le design
+du lissage temporel. Le mode vidéo (fichier + caméra, cf. Couche application
+ci-dessus) et le lissage temporel (`LaneTracker`) sont faits ; reste au
+programme : recherche autour du fit précédent, correction de distorsion
+caméra, passage à une sortie métrique.

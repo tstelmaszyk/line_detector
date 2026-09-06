@@ -45,10 +45,11 @@ la perspective sur une caméra donnée.
 
 Trois sources sont acceptées, mutuellement exclusives : une image fixe
 (`--image`), un fichier vidéo (`--video`), ou une caméra en direct
-(`--camera`). Le mode vidéo lit et traite frame par frame mais ne fait
-aujourd'hui **aucun filtrage temporel** : chaque frame est traitée
-indépendamment, sans lissage ni recherche autour du fit précédent. C'est la
-prochaine brique prévue (voir [Limites connues](#limites-connues)).
+(`--camera`). Le mode vidéo lit et traite frame par frame, et lisse le
+`LaneModel` à travers les frames (`LaneTracker`, EMA sur les coefficients des
+polynômes + coasting sur perte de détection courte). Il n'y a en revanche
+toujours pas de recherche localisée autour du fit précédent (voir [Limites
+connues](#limites-connues)).
 
 La bibliothèque de détection elle-même est volontairement indépendante de tout
 ce qui est spécifique à ce véhicule : elle prend une image, elle rend
@@ -453,6 +454,7 @@ d'être calculées puis jetées.
 | `src/lib/LaneQuality/` | étape 5 — rejet des fits geometriquement incoherents |
 | `src/lib/LaneGeometry/` | étape 6 — offset, courbure, reconstruction |
 | `src/lib/LaneOverlay/` | étape 7 — rendu de l'overlay et du HUD |
+| `src/lib/LaneTracker/` | lissage temporel du LaneModel (EMA + coasting), hors des étapes 1-7 : possédé par `PipelineRunner`, pas par `DetectLines` |
 | `src/lib/LaneConfig/` | tous les réglages numériques du pipeline |
 | `src/lib/LaneModel/` | structure de résultat (le signal de pilotage) |
 | `src/lib/ImageSink/` | écriture d'image (résultat et debug), `Disk`/`Null` |
@@ -639,7 +641,7 @@ notation scientifique, pour que les colonnes restent stables même sur un grand
 rayon de courbure) :
 
 ```
-frame_index;lane_detected;normalized_offset;lateral_offset_px;curvature_radius_px;reconstructed;compute_ms;render_ms
+frame_index;lane_detected;normalized_offset;lateral_offset_px;curvature_radius_px;reconstructed;coasted;compute_ms;render_ms
 ```
 
 `stderr` porte tout ce qui s'adresse à un humain : messages d'erreur, résumé
@@ -655,7 +657,10 @@ signal sans avoir à filtrer du texte destiné à un humain :
 Rappel de convention : un `normalized_offset` négatif signifie que le véhicule
 est décalé **à gauche**. `reconstructed` vaut `1` quand un seul marquage était
 visible et que l'autre a été reconstruit par décalage — le signal reste
-exploitable mais dégradé.
+exploitable mais dégradé. `coasted` vaut `1` quand cette frame n'a pas de
+détection fraîche et que `LaneTracker` reconduit le dernier modèle lissé
+connu — signal figé, à distinguer d'une détection fraîche même si
+`lane_detected` reste à `1` dans les deux cas.
 
 ### Dossier de sortie
 
@@ -707,6 +712,7 @@ LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector -
 | `out/debug_03_windows.jpg` | fenêtres glissantes, pixels gauche en rouge / droite en bleu | `LINE_DETECTOR_DEBUG` |
 | `out/debug_04_fit.jpg` | polynômes ajustés tracés sur la vue de dessus | `LINE_DETECTOR_DEBUG`, **si** `LaneQuality` ne rejette aucun côté |
 | `out/debug_04b_quality.jpg` | fits d'origine + raison du rejet (largeur incohérente ou pixels insuffisants) | `LINE_DETECTOR_DEBUG`, **si** `LaneQuality` rejette au moins un côté |
+| `out/debug_04c_tracker.jpg` | polynômes bruts vs lissés par `LaneTracker` (rouge/bleu = brut, vert/jaune = lissé) | `LINE_DETECTOR_DEBUG` |
 | `out/debug_05_overlay.jpg` | overlay final, identique à `out/output.jpg` | `LINE_DETECTOR_DEBUG` **et** `--record` |
 
 `debug_05_overlay.jpg` est le seul qui demande en plus `--record` : il vient
@@ -785,11 +791,11 @@ Il n'y a pas de linter ni de CI configurés sur ce dépôt à ce jour.
 
 ## Limites connues
 
-Le mode vidéo (fichier et caméra) lit et traite chaque frame indépendamment :
-il n'y a aujourd'hui aucun filtrage temporel entre les frames — pas de
-lissage du signal, pas de recherche localisée autour du fit de la frame
-précédente (qui accélérerait le traitement en évitant de relancer une
-recherche par histogramme à chaque frame). Restent également au programme la
-correction de distorsion caméra (le pipeline suppose une caméra sans
-distorsion notable) et le passage d'un signal en pixels à un signal en unités
-métriques, qui suppose une calibration caméra/sol supplémentaire.
+Le mode vidéo (fichier et caméra) lisse désormais le `LaneModel` à travers les
+frames (`LaneTracker`), mais il n'y a toujours pas de recherche localisée
+autour du fit de la frame précédente (qui accélérerait le traitement en
+évitant de relancer une recherche par histogramme à chaque frame). Restent
+également au programme la correction de distorsion caméra (le pipeline
+suppose une caméra sans distorsion notable) et le passage d'un signal en
+pixels à un signal en unités métriques, qui suppose une calibration
+caméra/sol supplémentaire.
