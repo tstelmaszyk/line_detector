@@ -47,9 +47,7 @@ class LaneTracker
     const LaneConfig m_config;                      ///< Configuration du pipeline.
     ImageSink& m_debug_sink;                         ///< Destination des traces.
 
-    LanePolynomial m_smoothed_left;   ///< Etat lisse, cote gauche.
-    LanePolynomial m_smoothed_right;  ///< Etat lisse, cote droit.
-    bool m_smoothed_reconstructed;    ///< reconstructed du dernier modele brut ayant alimente l'etat lisse.
-    bool m_has_state;                 ///< true des qu'un premier fit valide a ete vu.
-    int m_miss_streak;                ///< Detections manquees consecutives.
+    LaneModel m_smoothed_model;  ///< Dernier modele lisse complet (polynomes + signal deja recalcule).
+    bool m_has_state;            ///< true des qu'un premier fit valide a ete vu.
+    int m_miss_streak;           ///< Detections manquees consecutives.
   };

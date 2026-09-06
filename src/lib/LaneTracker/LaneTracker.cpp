@@ -8,6 +8,7 @@
 
 #include "LaneGeometry/LaneGeometry.h"
 #include "LaneTracker/LaneTracker.h"
+#include "SmartAssert/SmartAssert.h"
 
 namespace
 {
@@ -50,19 +51,17 @@ LaneTracker::LaneTracker( const VideoCaracteristics& p_video,
   : m_video_properties( p_video ),
     m_config( p_config ),
     m_debug_sink( p_debug_sink ),
-    m_smoothed_left(),
-    m_smoothed_right(),
-    m_smoothed_reconstructed( false ),
+    m_smoothed_model(),
     m_has_state( false ),
     m_miss_streak( 0 )
 {
+  const bool alpha_in_domain = ( m_config.lane_tracker_alpha > 0.0 ) && ( m_config.lane_tracker_alpha <= 1.0 );
+  SMART_ASSERT( alpha_in_domain, "LaneTracker: lane_tracker_alpha hors domaine (0 < alpha <= 1)" );
 }
 
 void LaneTracker::reset()
 {
-  m_smoothed_left = LanePolynomial();
-  m_smoothed_right = LanePolynomial();
-  m_smoothed_reconstructed = false;
+  m_smoothed_model = LaneModel();
   m_has_state = false;
   m_miss_streak = 0;
 }
@@ -71,6 +70,11 @@ LaneModel LaneTracker::update( const LaneModel& p_raw_model )
 {
   if ( !m_config.lane_tracker_enabled )
     {
+    if ( m_debug_sink.is_enabled() )
+      {
+      draw_debug_trace( p_raw_model, false );
+      }
+
     return p_raw_model;
     }
 
@@ -78,33 +82,31 @@ LaneModel LaneTracker::update( const LaneModel& p_raw_model )
     {
     m_miss_streak = 0;
 
+    LaneModel candidate_model;
+
     if ( !m_has_state )
       {
-      m_smoothed_left = p_raw_model.left;
-      m_smoothed_right = p_raw_model.right;
-      m_has_state = true;
+      candidate_model.left = p_raw_model.left;
+      candidate_model.right = p_raw_model.right;
       }
     else
       {
-      m_smoothed_left = blend_polynomial( m_smoothed_left, p_raw_model.left, m_config.lane_tracker_alpha );
-      m_smoothed_right = blend_polynomial( m_smoothed_right, p_raw_model.right, m_config.lane_tracker_alpha );
+      candidate_model.left = blend_polynomial( m_smoothed_model.left, p_raw_model.left, m_config.lane_tracker_alpha );
+      candidate_model.right = blend_polynomial( m_smoothed_model.right, p_raw_model.right, m_config.lane_tracker_alpha );
       }
 
-    m_smoothed_reconstructed = p_raw_model.reconstructed;
+    candidate_model.reconstructed = p_raw_model.reconstructed;
+    candidate_model = LaneGeometry::compute( candidate_model, m_video_properties, m_config );
 
-    LaneModel smoothed_model;
-    smoothed_model.left = m_smoothed_left;
-    smoothed_model.right = m_smoothed_right;
-    smoothed_model.reconstructed = m_smoothed_reconstructed;
-    smoothed_model.coasted = false;
-    smoothed_model = LaneGeometry::compute( smoothed_model, m_video_properties, m_config );
+    m_smoothed_model = candidate_model;
+    m_has_state = true;
 
     if ( m_debug_sink.is_enabled() )
       {
       draw_debug_trace( p_raw_model, false );
       }
 
-    return smoothed_model;
+    return m_smoothed_model;
     }
 
   ++m_miss_streak;
@@ -113,12 +115,8 @@ LaneModel LaneTracker::update( const LaneModel& p_raw_model )
 
   if ( can_coast )
     {
-    LaneModel coasted_model;
-    coasted_model.left = m_smoothed_left;
-    coasted_model.right = m_smoothed_right;
-    coasted_model.reconstructed = m_smoothed_reconstructed;
+    LaneModel coasted_model = m_smoothed_model;
     coasted_model.coasted = true;
-    coasted_model = LaneGeometry::compute( coasted_model, m_video_properties, m_config );
 
     if ( m_debug_sink.is_enabled() )
       {
@@ -162,8 +160,8 @@ void LaneTracker::draw_debug_trace( const LaneModel& p_raw_model, bool p_coasted
 
     if ( m_has_state )
       {
-      smoothed_left_points.emplace_back( ::cvRound( m_smoothed_left.eval_at( y ) ), y );
-      smoothed_right_points.emplace_back( ::cvRound( m_smoothed_right.eval_at( y ) ), y );
+      smoothed_left_points.emplace_back( ::cvRound( m_smoothed_model.left.eval_at( y ) ), y );
+      smoothed_right_points.emplace_back( ::cvRound( m_smoothed_model.right.eval_at( y ) ), y );
       }
     }
 
