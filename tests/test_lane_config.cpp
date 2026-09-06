@@ -22,4 +22,9 @@ TEST_CASE( "LaneConfig fournit des valeurs par defaut saines" )
   CHECK( config.min_quality_points > 0 );
   CHECK( config.min_quality_points > config.window_min_pix );
   CHECK( config.max_width_ratio_variation > 1.0 );
+
+  CHECK( config.lane_tracker_enabled );
+  CHECK( config.lane_tracker_alpha > 0.0 );
+  CHECK( config.lane_tracker_alpha <= 1.0 );
+  CHECK( config.lane_tracker_max_coast_frames > 0 );
 }

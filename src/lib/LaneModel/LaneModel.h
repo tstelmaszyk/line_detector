@@ -14,6 +14,7 @@ struct LaneModel
   LanePolynomial right;              ///< Polynôme du côté droit (pixels BEV).
   bool lane_detected = false;        ///< true si une voie exploitable est détectée.
   bool reconstructed = false;        ///< true si un côté a été reconstruit (signal dégradé).
+  bool coasted = false;              ///< true si ce frame n'a pas de detection fraiche (LaneTracker reconduit le dernier modele lisse).
 
   PixelOffset lateral_offset_px = 0.0;  ///< Écart véhicule↔centre voie au bas de l'image.
   double normalized_offset = 0.0;    ///< offset / demi-largeur ; <0 = décalé à gauche.

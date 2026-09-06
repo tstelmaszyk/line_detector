@@ -49,4 +49,9 @@ struct LaneConfig
   // --- Qualité / confiance (LaneQuality) ---
   int min_quality_points = 150;              ///< Pixels mini/côté pour faire confiance au fit (> window_min_pix).
   double max_width_ratio_variation = 1.5;    ///< Ratio largeur max/min toléré entre bas/milieu/haut de la BEV.
+
+  // --- Lissage temporel (LaneTracker) ---
+  bool lane_tracker_enabled = true;          ///< false = LaneTracker::update() est un pass-through.
+  double lane_tracker_alpha = 0.3;           ///< Poids de la mesure fraiche dans l'EMA (0 < alpha <= 1).
+  int lane_tracker_max_coast_frames = 10;    ///< Frames de coasting tolerees avant reset (~0.3s a 30 fps).
   };
