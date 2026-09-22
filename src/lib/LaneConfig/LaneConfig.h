@@ -48,7 +48,7 @@ struct LaneConfig
 
   // --- Qualité / confiance (LaneQuality) ---
   int min_quality_points = 150;              ///< Pixels mini/côté pour faire confiance au fit (> window_min_pix).
-  double max_width_ratio_variation = 1.5;    ///< Ratio largeur max/min toléré entre bas/milieu/haut de la BEV.
+  double max_width_ratio_variation = 1.8;    ///< Ratio largeur max/min toléré entre bas/milieu/haut de la BEV.
 
   // --- Lissage temporel (LaneTracker) ---
   bool lane_tracker_enabled = true;          ///< false = LaneTracker::update() est un pass-through.
