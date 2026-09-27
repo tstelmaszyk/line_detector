@@ -17,6 +17,7 @@ img_piste/
 
 # Reglages locaux d'outils dev (permissions personnelles) — non versionnes.
 .claude/settings.local.json
+CLAUDE.md
 
 # Espace de travail Subagent-Driven Development (ledger, briefs, revues) — scratch local.
 .superpowers/
