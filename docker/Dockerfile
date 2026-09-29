@@ -74,4 +74,4 @@ RUN mkdir -p out
 # CMD = ce qui s'exécute quand on lance le conteneur (docker run).
 # Ici on lance simplement l'exécutable compilé.
 # =====================================================================
-CMD ["./build/line_detector", "--image", "img_piste/img2.jpg", "--record"]
+CMD ["./build/line_detector", "image", "--file", "img_piste/img2.jpg", "--record"]

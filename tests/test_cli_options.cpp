@@ -45,176 +45,305 @@ class ArgumentVector
     ::std::vector< char* > m_pointers;         ///< Pointeurs vers les copies.
   };
 
+/// @brief Analyse une ligne de commande ; argv[0] est ajoute automatiquement.
+/// @param p_arguments Arguments apres le nom du programme.
+/// @param p_options   Options remplies en sortie.
+/// @return Statut de parse_arguments.
+int parse( const ::std::vector< ::std::string >& p_arguments, CliOptions& p_options )
+  {
+  ::std::vector< ::std::string > full_arguments;
+  full_arguments.push_back( "line_detector" );
+  full_arguments.insert( full_arguments.end(), p_arguments.begin(), p_arguments.end() );
+
+  ArgumentVector argument_vector( full_arguments );
+  const int status = parse_arguments( argument_vector.count(), argument_vector.values(), p_options );
+  return status;
+  }
+
+/// @brief Indique si le message d'erreur contient le fragment attendu.
+bool error_mentions( const CliOptions& p_options, const ::std::string& p_fragment )
+  {
+  const bool found = ( ::std::string::npos != p_options.error_message.find( p_fragment ) );
+  return found;
+  }
+
 } // namespace
 
-TEST_CASE( "parse_arguments : aucun argument -> image par defaut" )
+// --- Formes valides ---------------------------------------------------------
+
+TEST_CASE( "parse_arguments : image --file" )
 {
-  ArgumentVector arguments( { "line_detector" } );
   CliOptions options;
 
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
+  const int status = parse( { "image", "--file", "img_piste/straight.jpg" }, options );
 
   CHECK( EXIT_SUCCESS == status );
-  CHECK( SOURCE_KIND_IMAGE == options.source_kind );
-  CHECK( DEFAULT_IMAGE_PATH == options.input_path );
-}
-
-TEST_CASE( "parse_arguments : --image avec chemin" )
-{
-  ArgumentVector arguments( { "line_detector", "--image", "img_piste/straight.jpg" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_SUCCESS == status );
-  CHECK( SOURCE_KIND_IMAGE == options.source_kind );
+  CHECK( MEDIA_KIND_IMAGE == options.media_kind );
+  CHECK( SOURCE_KIND_FILE == options.source_kind );
   CHECK( ::std::string( "img_piste/straight.jpg" ) == options.input_path );
+  CHECK( false == options.record );
+  CHECK( options.error_message.empty() );
 }
 
-TEST_CASE( "parse_arguments : --video avec chemin" )
+TEST_CASE( "parse_arguments : video --file" )
 {
-  ArgumentVector arguments( { "line_detector", "--video", "essai.avi" } );
   CliOptions options;
 
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
+  const int status = parse( { "video", "--file", "essai.avi" }, options );
 
   CHECK( EXIT_SUCCESS == status );
-  CHECK( SOURCE_KIND_VIDEO == options.source_kind );
+  CHECK( MEDIA_KIND_VIDEO == options.media_kind );
+  CHECK( SOURCE_KIND_FILE == options.source_kind );
   CHECK( ::std::string( "essai.avi" ) == options.input_path );
 }
 
-TEST_CASE( "parse_arguments : --camera sans index -> index par defaut" )
+TEST_CASE( "parse_arguments : video --camera sans index -> index par defaut" )
 {
-  ArgumentVector arguments( { "line_detector", "--camera" } );
   CliOptions options;
 
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
+  const int status = parse( { "video", "--camera" }, options );
 
   CHECK( EXIT_SUCCESS == status );
+  CHECK( MEDIA_KIND_VIDEO == options.media_kind );
   CHECK( SOURCE_KIND_CAMERA == options.source_kind );
   CHECK( DEFAULT_CAMERA_INDEX == options.camera_index );
 }
 
-TEST_CASE( "parse_arguments : --camera avec index explicite" )
+TEST_CASE( "parse_arguments : video --camera avec index explicite" )
 {
-  ArgumentVector arguments( { "line_detector", "--camera", "2" } );
   CliOptions options;
 
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
+  const int status = parse( { "video", "--camera", "2" }, options );
 
   CHECK( EXIT_SUCCESS == status );
   CHECK( SOURCE_KIND_CAMERA == options.source_kind );
   CHECK( 2 == options.camera_index );
 }
 
-TEST_CASE( "parse_arguments : modes en conflit -> echec" )
+TEST_CASE( "parse_arguments : video --camera --record -> --record n'est pas un index" )
 {
-  ArgumentVector arguments( { "line_detector", "--image", "a.jpg", "--video", "b.avi" } );
   CliOptions options;
 
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : valeur manquante apres --image -> echec" )
-{
-  ArgumentVector arguments( { "line_detector", "--image" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : --image suivi d'un flag -> valeur manquante" )
-{
-  ArgumentVector arguments( { "line_detector", "--image", "--video", "b.avi" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : flag inconnu -> echec" )
-{
-  ArgumentVector arguments( { "line_detector", "--webcam" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : argument positionnel nu -> echec" )
-{
-  ArgumentVector arguments( { "line_detector", "img_piste/img2.jpg" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : index camera non numerique -> echec" )
-{
-  ArgumentVector arguments( { "line_detector", "--camera", "abc" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : index camera hors plage -> echec" )
-{
-  ArgumentVector arguments( { "line_detector", "--camera", "99999999999999999999" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
-
-  CHECK( EXIT_FAILURE == status );
-  CHECK( !options.error_message.empty() );
-}
-
-TEST_CASE( "parse_arguments : --record absent par defaut" )
-{
-  ArgumentVector arguments( { "line_detector", "--image", "a.jpg" } );
-  CliOptions options;
-
-  const int status = parse_arguments( arguments.count(), arguments.values(), options );
+  const int status = parse( { "video", "--camera", "--record" }, options );
 
   CHECK( EXIT_SUCCESS == status );
-  CHECK( false == options.record );
+  CHECK( SOURCE_KIND_CAMERA == options.source_kind );
+  CHECK( DEFAULT_CAMERA_INDEX == options.camera_index );
+  CHECK( true == options.record );
 }
 
-TEST_CASE( "parse_arguments : --record avec chaque mode" )
+TEST_CASE( "parse_arguments : video --gstreamer conserve la partie source telle quelle" )
 {
-  ArgumentVector image_arguments( { "line_detector", "--image", "a.jpg", "--record" } );
+  CliOptions options;
+
+  const int status = parse( { "video", "--gstreamer", "libcamerasrc ! video/x-raw,width=1280,height=720" }, options );
+
+  CHECK( EXIT_SUCCESS == status );
+  CHECK( MEDIA_KIND_VIDEO == options.media_kind );
+  CHECK( SOURCE_KIND_GSTREAMER == options.source_kind );
+  CHECK( ::std::string( "libcamerasrc ! video/x-raw,width=1280,height=720" ) == options.gstreamer_pipeline );
+}
+
+TEST_CASE( "parse_arguments : --record avant ou apres la source" )
+{
   CliOptions image_options;
-  const int image_status = parse_arguments( image_arguments.count(), image_arguments.values(), image_options );
+  const int image_status = parse( { "image", "--file", "a.jpg", "--record" }, image_options );
 
-  ArgumentVector video_arguments( { "line_detector", "--record", "--video", "b.avi" } );
   CliOptions video_options;
-  const int video_status = parse_arguments( video_arguments.count(), video_arguments.values(), video_options );
+  const int video_status = parse( { "video", "--record", "--file", "b.avi" }, video_options );
 
-  ArgumentVector camera_arguments( { "line_detector", "--camera", "1", "--record" } );
   CliOptions camera_options;
-  const int camera_status = parse_arguments( camera_arguments.count(), camera_arguments.values(), camera_options );
+  const int camera_status = parse( { "video", "--camera", "1", "--record" }, camera_options );
 
   CHECK( EXIT_SUCCESS == image_status );
   CHECK( true == image_options.record );
   CHECK( EXIT_SUCCESS == video_status );
   CHECK( true == video_options.record );
-  CHECK( SOURCE_KIND_VIDEO == video_options.source_kind );
+  CHECK( SOURCE_KIND_FILE == video_options.source_kind );
   CHECK( EXIT_SUCCESS == camera_status );
   CHECK( true == camera_options.record );
   CHECK( 1 == camera_options.camera_index );
+}
+
+// --- Sous-commande ----------------------------------------------------------
+
+TEST_CASE( "parse_arguments : aucun argument -> sous-commande manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( {}, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Sous-commande manquante" ) );
+}
+
+TEST_CASE( "parse_arguments : source sans sous-commande -> sous-commande manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( { "--file", "a.jpg" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Sous-commande manquante" ) );
+}
+
+TEST_CASE( "parse_arguments : ancienne syntaxe --image rejetee (pas d'alias)" )
+{
+  CliOptions options;
+
+  const int status = parse( { "--image", "a.jpg" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Sous-commande manquante" ) );
+}
+
+TEST_CASE( "parse_arguments : sous-commande inconnue" )
+{
+  CliOptions options;
+
+  const int status = parse( { "photo", "--file", "a.jpg" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Sous-commande inconnue : photo" ) );
+}
+
+// --- Source -----------------------------------------------------------------
+
+TEST_CASE( "parse_arguments : aucune source -> source manquante" )
+{
+  CliOptions bare_options;
+  const int bare_status = parse( { "video" }, bare_options );
+
+  CliOptions record_options;
+  const int record_status = parse( { "video", "--record" }, record_options );
+
+  CHECK( EXIT_FAILURE == bare_status );
+  CHECK( error_mentions( bare_options, "Source manquante" ) );
+  CHECK( EXIT_FAILURE == record_status );
+  CHECK( error_mentions( record_options, "Source manquante" ) );
+}
+
+TEST_CASE( "parse_arguments : deux sources -> sources exclusives" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--file", "a.mp4", "--camera" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Sources exclusives" ) );
+}
+
+TEST_CASE( "parse_arguments : image --camera -> non disponible avec image" )
+{
+  CliOptions options;
+
+  const int status = parse( { "image", "--camera" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "--camera n'est pas disponible avec image" ) );
+}
+
+TEST_CASE( "parse_arguments : image --gstreamer -> non disponible avec image" )
+{
+  CliOptions options;
+
+  const int status = parse( { "image", "--gstreamer", "videotestsrc" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "--gstreamer n'est pas disponible avec image" ) );
+}
+
+// --- Valeurs ----------------------------------------------------------------
+
+TEST_CASE( "parse_arguments : --file sans valeur -> valeur manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--file" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Valeur manquante apres : --file" ) );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer suivi d'un flag -> valeur manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--gstreamer", "--record" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Valeur manquante apres : --gstreamer" ) );
+}
+
+TEST_CASE( "parse_arguments : --file vide -> valeur manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--file", "" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Valeur manquante apres : --file" ) );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer blanc -> valeur manquante" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--gstreamer", "   " }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Valeur manquante apres : --gstreamer" ) );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer avec appsink -> pipeline complet refuse" )
+{
+  CliOptions options;
+
+  const int status =
+    parse( { "video", "--gstreamer", "videotestsrc ! videoconvert ! video/x-raw,format=BGR ! appsink" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "sans appsink" ) );
+}
+
+TEST_CASE( "parse_arguments : index camera non numerique -> echec" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--camera", "abc" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Index camera invalide : abc" ) );
+}
+
+TEST_CASE( "parse_arguments : index camera hors plage -> echec" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--camera", "99999999999999999999" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Index camera invalide" ) );
+}
+
+// --- Arguments en trop ------------------------------------------------------
+
+TEST_CASE( "parse_arguments : flag inconnu -> echec" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--file", "a.mp4", "--foo" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Flag inconnu : --foo" ) );
+}
+
+TEST_CASE( "parse_arguments : argument positionnel en trop -> echec" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--file", "a.mp4", "extra" }, options );
+
+  CHECK( EXIT_FAILURE == status );
+  CHECK( error_mentions( options, "Argument positionnel non supporte : extra" ) );
 }

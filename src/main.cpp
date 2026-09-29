@@ -65,25 +65,42 @@ void handle_interrupt( int p_signal_number )
 
 /// @brief Construit la source de frames correspondant aux options.
 ///
+/// La sous-commande (media_kind) choisit la classe, l'option de source
+/// (source_kind) choisit la fabrique.
+///
 /// Les fabriques renvoient nullptr si la source ne peut pas être ouverte ; ce
 /// nullptr est propagé tel quel, et main le traite comme un aléa
 /// d'environnement (EXIT_IF_FAILED). Un objet non nul est toujours
 /// utilisable : aucune autre vérification n'est nécessaire.
-/// @param p_options Options de la ligne de commande.
+/// @param p_options Options de la ligne de commande (déjà validées par parse_arguments).
 /// @return Source construite, ou nullptr si elle n'a pas pu être ouverte.
 ::std::unique_ptr< FrameSource > make_frame_source( const CliOptions& p_options )
   {
-  if ( SOURCE_KIND_CAMERA == p_options.source_kind )
+  if ( MEDIA_KIND_IMAGE == p_options.media_kind )
     {
-    return VideoFrameSource::from_camera( p_options.camera_index );
+    // parse_arguments rejette image --camera et image --gstreamer : seul --file arrive ici.
+    const bool is_file_source = ( SOURCE_KIND_FILE == p_options.source_kind );
+    SMART_ASSERT( is_file_source, "image n'accepte que --file" );
+    return ImageFrameSource::from_file( p_options.input_path );
     }
 
-  if ( SOURCE_KIND_VIDEO == p_options.source_kind )
+  switch ( p_options.source_kind )
     {
-    return VideoFrameSource::from_file( p_options.input_path );
+    case SOURCE_KIND_FILE:
+      return VideoFrameSource::from_file( p_options.input_path );
+
+    case SOURCE_KIND_CAMERA:
+      return VideoFrameSource::from_camera( p_options.camera_index );
+
+    case SOURCE_KIND_GSTREAMER:
+      return VideoFrameSource::from_gstreamer( p_options.gstreamer_pipeline );
+
+    case SOURCE_KIND_COUNT:
+      break;
     }
 
-  return ImageFrameSource::from_file( p_options.input_path );
+  SMART_ASSERT( false, "source_kind invalide" );
+  return nullptr;
   }
 
 } // namespace
@@ -166,7 +183,7 @@ int main( int argc, char** argv )
   ::std::vector< FrameObserver* > observers;
   observers.push_back( &logger );
 
-  const bool is_still_image = ( SOURCE_KIND_IMAGE == options.source_kind );
+  const bool is_still_image = ( MEDIA_KIND_IMAGE == options.media_kind );
   const ::std::string video_path = output_dir + PATH_SEPARATOR + OUTPUT_VIDEO_NAME;
 
   ::std::unique_ptr< DiskImageSink > result_sink;

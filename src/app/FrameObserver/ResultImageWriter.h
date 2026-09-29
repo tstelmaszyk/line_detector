@@ -15,7 +15,7 @@ struct LaneModel;
 
 /// @brief Écrit la frame annotée via un ImageSink.
 ///
-/// Utilisé en mode --image : conserve à l'identique le comportement historique
+/// Utilisé par la sous-commande image : conserve à l'identique le comportement historique
 /// (out/output.jpg écrit par un ImageSink injecté).
 class ResultImageWriter : public FrameObserver
   {
