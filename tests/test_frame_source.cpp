@@ -4,11 +4,12 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/videoio.hpp>
 
+#include <fstream>
 #include <memory>
 #include <string>
 
-#include "FrameSource/CaptureFrameSource.h"
-#include "FrameSource/StillImageFrameSource.h"
+#include "FrameSource/ImageFrameSource.h"
+#include "FrameSource/VideoFrameSource.h"
 #include "test_support.h"
 
 namespace
@@ -55,47 +56,60 @@ const int TEST_VIDEO_GRAY_STEP = 20;          ///< Ecart de gris entre deux fram
   return full_path;
   }
 
+/// @brief Ecrit un fichier texte (ni image ni video) et rend son chemin.
+::std::string write_text_file( const ::std::string& p_file_name )
+  {
+  const ::std::string full_path = test_temp_dir() + "/" + p_file_name;
+  ::std::ofstream stream( full_path );
+  stream << "ceci n'est pas une image\n";
+  stream.close();
+  const bool written = !stream.fail();
+  REQUIRE( written );
+  return full_path;
+  }
+
 } // namespace
 
-TEST_CASE( "StillImageFrameSource : une frame puis fin de flux" )
+TEST_CASE( "ImageFrameSource : une frame puis fin de flux" )
 {
-  const ::std::string image_path = write_test_image( "still_source.jpg" );
-  StillImageFrameSource source( image_path );
-
-  const bool opened = source.is_opened();
-  REQUIRE( true == opened );
+  const ::std::string image_path = write_test_image( "image_source.jpg" );
+  const ::std::unique_ptr< ImageFrameSource > source = ImageFrameSource::from_file( image_path );
+  REQUIRE( nullptr != source );
 
   ::cv::Mat frame;
-  const bool first_read = source.read( frame );
-  const bool second_read = source.read( frame );
+  const bool first_read = source->read( frame );
+  const bool second_read = source->read( frame );
 
   CHECK( true == first_read );
   CHECK( TEST_IMAGE_WIDTH == frame.cols );
   CHECK( TEST_IMAGE_HEIGHT == frame.rows );
+  CHECK( CV_8UC3 == frame.type() );
   CHECK( false == second_read );
 }
 
-TEST_CASE( "StillImageFrameSource : chemin invalide -> source non ouverte" )
+TEST_CASE( "ImageFrameSource : fichier absent -> nullptr" )
 {
   const ::std::string missing_path = test_temp_dir() + "/fichier_absent_line_detector.jpg";
-  StillImageFrameSource source( missing_path );
 
-  const bool opened = source.is_opened();
+  const ::std::unique_ptr< ImageFrameSource > source = ImageFrameSource::from_file( missing_path );
 
-  ::cv::Mat frame;
-  const bool read_ok = source.read( frame );
-
-  CHECK( false == opened );
-  CHECK( false == read_ok );
+  CHECK( nullptr == source );
 }
 
-TEST_CASE( "CaptureFrameSource : lit toutes les frames d'un fichier video" )
+TEST_CASE( "ImageFrameSource : fichier qui n'est pas une image -> nullptr" )
 {
-  const ::std::string video_path = write_test_video( "capture_source.avi" );
-  const ::std::unique_ptr< CaptureFrameSource > source = CaptureFrameSource::from_file( video_path );
+  const ::std::string text_path = write_text_file( "pas_une_image_line_detector.jpg" );
 
-  const bool opened = source->is_opened();
-  REQUIRE( true == opened );
+  const ::std::unique_ptr< ImageFrameSource > source = ImageFrameSource::from_file( text_path );
+
+  CHECK( nullptr == source );
+}
+
+TEST_CASE( "VideoFrameSource : lit toutes les frames d'un fichier video" )
+{
+  const ::std::string video_path = write_test_video( "video_source.avi" );
+  const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_file( video_path );
+  REQUIRE( nullptr != source );
 
   int read_count = 0;
   ::cv::Mat frame;
@@ -112,16 +126,11 @@ TEST_CASE( "CaptureFrameSource : lit toutes les frames d'un fichier video" )
   CHECK( TEST_VIDEO_FRAME_COUNT == read_count );
 }
 
-TEST_CASE( "CaptureFrameSource : fichier absent -> source non ouverte" )
+TEST_CASE( "VideoFrameSource : fichier absent -> nullptr" )
 {
   const ::std::string missing_path = test_temp_dir() + "/video_absente_line_detector.avi";
-  const ::std::unique_ptr< CaptureFrameSource > source = CaptureFrameSource::from_file( missing_path );
 
-  const bool opened = source->is_opened();
+  const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_file( missing_path );
 
-  ::cv::Mat frame;
-  const bool read_ok = source->read( frame );
-
-  CHECK( false == opened );
-  CHECK( false == read_ok );
+  CHECK( nullptr == source );
 }

@@ -19,9 +19,9 @@
 #include "FrameObserver/FrameObserver.h"
 #include "FrameObserver/LaneModelLogger.h"
 #include "FrameObserver/ResultImageWriter.h"
-#include "FrameSource/CaptureFrameSource.h"
 #include "FrameSource/FrameSource.h"
-#include "FrameSource/StillImageFrameSource.h"
+#include "FrameSource/ImageFrameSource.h"
+#include "FrameSource/VideoFrameSource.h"
 #include "ImageSink/DiskImageSink.h"
 #include "ImageSink/ImageSink.h"
 #include "ImageSink/NullImageSink.h"
@@ -64,48 +64,26 @@ void handle_interrupt( int p_signal_number )
   }
 
 /// @brief Construit la source de frames correspondant aux options.
+///
+/// Les fabriques renvoient nullptr si la source ne peut pas être ouverte ; ce
+/// nullptr est propagé tel quel, et main le traite comme un aléa
+/// d'environnement (EXIT_IF_FAILED). Un objet non nul est toujours
+/// utilisable : aucune autre vérification n'est nécessaire.
 /// @param p_options Options de la ligne de commande.
 /// @return Source construite, ou nullptr si elle n'a pas pu être ouverte.
 ::std::unique_ptr< FrameSource > make_frame_source( const CliOptions& p_options )
   {
   if ( SOURCE_KIND_CAMERA == p_options.source_kind )
     {
-    ::std::unique_ptr< CaptureFrameSource > camera_source =
-      CaptureFrameSource::from_camera( p_options.camera_index );
-    const bool opened = camera_source->is_opened();
-
-    if ( !opened )
-      {
-      return nullptr;
-      }
-
-    return camera_source;
+    return VideoFrameSource::from_camera( p_options.camera_index );
     }
 
   if ( SOURCE_KIND_VIDEO == p_options.source_kind )
     {
-    ::std::unique_ptr< CaptureFrameSource > video_source =
-      CaptureFrameSource::from_file( p_options.input_path );
-    const bool opened = video_source->is_opened();
-
-    if ( !opened )
-      {
-      return nullptr;
-      }
-
-    return video_source;
+    return VideoFrameSource::from_file( p_options.input_path );
     }
 
-  ::std::unique_ptr< StillImageFrameSource > image_source =
-    ::std::make_unique< StillImageFrameSource >( p_options.input_path );
-  const bool opened = image_source->is_opened();
-
-  if ( !opened )
-    {
-    return nullptr;
-    }
-
-  return image_source;
+  return ImageFrameSource::from_file( p_options.input_path );
   }
 
 } // namespace

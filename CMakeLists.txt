@@ -28,12 +28,12 @@ target_link_libraries( line_detector_lib PUBLIC ${OpenCV_LIBS} )
 # --- Bibliotheque applicative : capture, boucle, sorties dev/test ---
 set(APP_SOURCES
     src/app/FrameObserver/AnnotatedVideoWriter.cpp
-    src/app/FrameSource/CaptureFrameSource.cpp
     src/app/CliOptions/CliOptions.cpp
+    src/app/FrameSource/ImageFrameSource.cpp
     src/app/FrameObserver/LaneModelLogger.cpp
     src/app/PipelineRunner/PipelineRunner.cpp
     src/app/FrameObserver/ResultImageWriter.cpp
-    src/app/FrameSource/StillImageFrameSource.cpp
+    src/app/FrameSource/VideoFrameSource.cpp
 )
 
 add_library( line_detector_app STATIC ${APP_SOURCES} )
