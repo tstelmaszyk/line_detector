@@ -43,9 +43,10 @@ il écrit aussi les étapes intermédiaires du pipeline (masque, vue de dessus,
 fenêtres de recherche, polynômes ajustés) — utile pour calibrer les seuils et
 la perspective sur une caméra donnée.
 
-Trois sources sont acceptées, mutuellement exclusives : une image fixe
-(`--image`), un fichier vidéo (`--video`), ou une caméra en direct
-(`--camera`). Le mode vidéo lit et traite frame par frame, et lisse le
+Le programme traite une image fixe (`image --file`) ou un flux
+(`video --file` pour un fichier vidéo, `video --camera` pour une webcam,
+`video --gstreamer` pour un pipeline GStreamer, par exemple la caméra CSI d'un
+Raspberry Pi 5). Le mode vidéo lit et traite frame par frame, et lisse le
 `LaneModel` à travers les frames (`LaneTracker`, EMA sur les coefficients des
 polynômes + coasting sur perte de détection courte). Il n'y a en revanche
 toujours pas de recherche localisée autour du fit précédent (voir [Limites
@@ -386,10 +387,13 @@ construit une `FrameSource` adaptée au mode demandé, lit la première frame
 observateurs, puis délègue tout le reste à `PipelineRunner::run()`.
 
 - **`FrameSource`** (interface à une seule méthode, `read`) a deux
-  implémentations : `StillImageFrameSource` (une image, rendue une fois — le
-  mode image fixe est un cas dégénéré du mode flux, pas un chemin de code à
-  part) et `CaptureFrameSource` (enveloppe `cv::VideoCapture`, fabriques
-  statiques `from_file` / `from_camera`).
+  implémentations, marquées `final` : `ImageFrameSource` (une image, rendue
+  une fois — le mode image fixe est un cas dégénéré du mode flux, pas un
+  chemin de code à part ; fabrique `from_file`) et `VideoFrameSource`
+  (enveloppe `cv::VideoCapture`, fabriques `from_file` / `from_camera` /
+  `from_gstreamer`). La sous-commande choisit la classe, l'option de source
+  choisit la fabrique. Les fabriques renvoient `nullptr` si la source ne peut
+  pas être ouverte : un objet reçu est toujours utilisable.
 - **`FrameObserver`** (interface `on_frame(index, model, image_annotée,
   compute_ms, render_ms)`) a trois implémentations : `LaneModelLogger` (une
   ligne CSV par frame), `ResultImageWriter` (mode image, écrit via un
@@ -459,7 +463,7 @@ d'être calculées puis jetées.
 | `src/lib/LaneModel/` | structure de résultat (le signal de pilotage) |
 | `src/lib/ImageSink/` | écriture d'image (résultat et debug), `Disk`/`Null` |
 | `src/app/CliOptions/` | analyse des arguments de ligne de commande |
-| `src/app/FrameSource/` | sources de frames : image fixe, fichier vidéo, caméra |
+| `src/app/FrameSource/` | sources de frames : `ImageFrameSource` (fichier image), `VideoFrameSource` (fichier vidéo, caméra, GStreamer) |
 | `src/app/FrameObserver/` | consommateurs par frame : log CSV, écriture image/vidéo |
 | `src/app/PipelineRunner/` | boucle principale, statistiques, arrêt propre |
 | `src/common/` | en-têtes partagés lib/app (types, assertions, géométrie image) |
@@ -497,7 +501,7 @@ génère `img_piste/img2.jpg`, `straight.jpg`, `curved.jpg`, `shifted.jpg` et
 `dashed.jpg` — des routes synthétiques couvrant chacune un cas particulier
 (voie droite centrée, virage, véhicule décalé, marquage discontinu pour tester
 la reconstruction). On peut aussi déposer n'importe quelle photo de route dans
-`img_piste/` et la passer en argument à `--image`.
+`img_piste/` et la passer en argument à `image --file`.
 
 ## Installation et exécution
 
@@ -519,7 +523,7 @@ puis on compile et on exécute en montant le dépôt dans le conteneur :
 ```sh
 docker run --rm -v "$(pwd):/app" -w /app line-detector \
   bash -c 'cmake -S /app -B /tmp/build && cmake --build /tmp/build --target line_detector -j \
-           && mkdir -p /app/out && cd /app && /tmp/build/line_detector --image img_piste/img2.jpg --record'
+           && mkdir -p /app/out && cd /app && /tmp/build/line_detector image --file img_piste/img2.jpg --record'
 ```
 
 Le volume `-v "$(pwd):/app"` partage le dépôt avec le conteneur dans les deux
@@ -546,7 +550,7 @@ puis, à l'intérieur du conteneur :
 ```sh
 cmake -S . -B build-linux
 cmake --build build-linux --target line_detector -j
-./build-linux/line_detector --image img_piste/img2.jpg --record
+./build-linux/line_detector image --file img_piste/img2.jpg --record
 ```
 
 Recompiler après une modification se limite alors à relancer la ligne
@@ -607,21 +611,68 @@ référence pour un build destiné à tourner sur le véhicule.
 ## Utilisation du programme
 
 ```
-line_detector [--image <chemin> | --video <chemin> | --camera [index]] [--record]
+line_detector image --file <chemin> [--record]
+line_detector video (--file <chemin> | --camera [index] | --gstreamer <pipeline source>) [--record]
 ```
 
-Les trois modes sont mutuellement exclusifs :
+La ligne de commande a deux axes indépendants :
 
-| Mode | Effet | Sortie avec `--record` |
+- la **sous-commande** (`image` ou `video`, obligatoire, en première
+  position) dit quel résultat on veut : une frame, ou un flux ;
+- l'**option de source** (exactement une, obligatoire) dit d'où viennent les
+  pixels.
+
+| Commande | Effet | Sortie avec `--record` |
 |---|---|---|
-| `--image <chemin>` | traite une image fixe (une seule frame) | `out/output.jpg` |
-| `--video <chemin>` | traite un fichier vidéo | `out/output.avi` |
-| `--camera [index]` | traite un flux caméra en direct (index par défaut : `0`) | `out/output.avi` |
+| `image --file <chemin>` | traite une image fixe (une seule frame) | `out/output.jpg` |
+| `video --file <chemin>` | traite un fichier vidéo | `out/output.avi` |
+| `video --camera [index]` | traite une caméra V4L2, typiquement une webcam USB (index par défaut : `0`) | `out/output.avi` |
+| `video --gstreamer <pipeline source>` | traite un flux GStreamer (caméra CSI, RTSP, …) | `out/output.avi` |
 
-Sans argument, le mode image par défaut charge `img_piste/img2.jpg`.
+`image` n'accepte que `--file` pour l'instant : `image --camera` et
+`image --gstreamer` sont rejetés avec un message explicite. Sans sous-commande
+ou sans source, le programme affiche l'aide et sort en erreur — il n'y a pas
+de valeur par défaut.
 
-**`--record` gouverne l'écriture du résultat, uniformément pour les trois
-modes** — le mode image fixe n'est pas un cas à part, c'est un cas dégénéré du
+### Source GStreamer
+
+`--gstreamer` attend **seulement la partie source** du pipeline. Le programme
+ajoute lui-même la fin :
+
+```
+ ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1
+```
+
+Le détecteur exige du BGR, et `drop=true max-buffers=1` garde toujours la
+frame la plus récente : si le traitement est plus lent que la caméra, les
+frames en retard sont jetées au lieu de s'accumuler. Une valeur contenant
+`appsink` (pipeline complet collé par habitude) est rejetée.
+
+Exemple, Camera Module 3 sur Raspberry Pi 5 — **pas encore validé sur le
+matériel**. Sur le Pi 5, la caméra CSI passe par la pile libcamera :
+`/dev/video0` y est un nœud Bayer brut, inutilisable avec `--camera`.
+
+```sh
+sudo apt install gstreamer1.0-libcamera
+line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=1280,height=720"
+```
+
+Prérequis : OpenCV compilé avec le backend GStreamer (c'est le cas des paquets
+Debian) et `gstreamer1.0-plugins-base`.
+
+**Limite connue** : si le **premier** élément du pipeline n'existe pas (faute
+de frappe, plugin non installé), OpenCV (4.6, mesuré) reste bloqué à
+l'ouverture, sans message ; `Ctrl-C` termine le programme. Vérifier d'abord
+la source hors programme :
+
+```sh
+gst-launch-1.0 libcamerasrc ! video/x-raw,width=1280,height=720 ! videoconvert ! fakesink
+```
+
+### Écriture du résultat et arrêt
+
+**`--record` gouverne l'écriture du résultat, uniformément pour les deux
+sous-commandes** — le mode image fixe n'est pas un cas à part, c'est un cas dégénéré du
 mode flux (une seule frame, puis fin). Sans `--record`, le programme n'écrit
 **aucun fichier** et n'exécute **aucun rendu** : aucun observateur ne
 réclamant l'image annotée, l'étape overlay est purement et simplement sautée
@@ -651,7 +702,7 @@ part de rendu détaillée entre parenthèses), et le chemin du fichier écrit si
 signal sans avoir à filtrer du texte destiné à un humain :
 
 ```sh
-./build-linux/line_detector --camera 0 > pilotage.csv
+./build-linux/line_detector video --camera 0 > pilotage.csv
 ```
 
 Rappel de convention : un `normalized_offset` négatif signifie que le véhicule
@@ -696,11 +747,11 @@ Exécuter avec la variable d'environnement `LINE_DETECTOR_DEBUG` non vide écrit
 les étapes intermédiaires du pipeline dans le dossier de sortie :
 
 ```sh
-LINE_DETECTOR_DEBUG=1 ./build-linux/line_detector --image img_piste/img2.jpg --record
+LINE_DETECTOR_DEBUG=1 ./build-linux/line_detector image --file img_piste/img2.jpg --record
 ```
 
 ```sh
-LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector --image data/img_piste/img2.jpg --record
+LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector image --file data/img_piste/img2.jpg --record
 ```
 
 | Fichier | Contenu | Condition |
