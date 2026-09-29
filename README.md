@@ -650,14 +650,21 @@ frames en retard sont jetées au lieu de s'accumuler. Une valeur contenant un
 ou un élément vide (`!` final ou doublé) est rejetée, car OpenCV resterait
 bloqué à l'ouverture au lieu d'échouer.
 
-Exemple, Camera Module 3 sur Raspberry Pi 5 — **pas encore validé sur le
-matériel**. Sur le Pi 5, la caméra CSI passe par la pile libcamera :
+Exemple, Camera Module 3 (imx708) sur Raspberry Pi 5 — validé avec
+libcamera 0.7.2. Sur le Pi 5, la caméra CSI passe par la pile libcamera :
 `/dev/video0` y est un nœud Bayer brut, inutilisable avec `--camera`.
 
 ```sh
 sudo apt install gstreamer1.0-libcamera
-line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=1280,height=720"
+line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=1280,height=720,format=NV12"
 ```
+
+**Le `format=NV12` est indispensable.** Sans format, `libcamerasrc` se rabat
+sur le flux Bayer brut du capteur (`configuring streams: (0) 1536x864-SBGGR16/RAW`
+dans la trace libcamera), que `videoconvert` ne sait pas convertir : la
+négociation échoue (`streaming stopped, reason not-negotiated`) et le
+programme sort avec « Impossible d'ouvrir la source demandee. ». Avec
+`format=NV12`, l'ISP du Pi produit directement l'image à la taille demandée.
 
 Prérequis : OpenCV compilé avec le backend GStreamer (c'est le cas des paquets
 Debian) et `gstreamer1.0-plugins-base`.
@@ -665,11 +672,18 @@ Debian) et `gstreamer1.0-plugins-base`.
 **Limite connue** : si le **premier** élément du pipeline n'existe pas (faute
 de frappe, plugin non installé), OpenCV (4.6, mesuré) reste bloqué à
 l'ouverture, sans message ; `Ctrl-C` termine le programme. Vérifier d'abord
-la source hors programme :
+la source hors programme (`gst-launch-1.0` est fourni par le paquet
+`gstreamer1.0-tools`, à installer avec `sudo apt install gstreamer1.0-tools`) :
 
 ```sh
-gst-launch-1.0 libcamerasrc ! video/x-raw,width=1280,height=720 ! videoconvert ! fakesink
+gst-launch-1.0 -v libcamerasrc ! video/x-raw,width=1280,height=720,format=NV12 ! videoconvert ! fakesink
 ```
+
+Le pipeline doit tourner jusqu'au `Ctrl-C`, et `-v` affiche les formats
+négociés. Pour diagnostiquer un échec, relancer avec `GST_DEBUG=2` devant la
+commande. Cette ligne se termine par `fakesink` : ne pas la coller telle
+quelle dans `--gstreamer`, qui la refuserait. N'y reprendre que la partie
+avant `! videoconvert`.
 
 ### Écriture du résultat et arrêt
 
