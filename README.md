@@ -507,7 +507,8 @@ la reconstruction). On peut aussi déposer n'importe quelle photo de route dans
 
 Il existe trois façons d'obtenir un exécutable, selon l'outillage disponible.
 Les trois compilent exactement le même code — seule la manière d'atteindre un
-environnement avec OpenCV change.
+environnement avec OpenCV change. Pour la cible, voir
+[Sur Raspberry Pi 5 avec Camera Module 3](#sur-raspberry-pi-5-avec-camera-module-3).
 
 ### Docker uniquement, en une commande depuis l'hôte
 
@@ -607,6 +608,59 @@ C'est la voie la plus rapide pour itérer si l'environnement local dispose déj�
 de la bonne version d'OpenCV, mais elle n'offre aucune garantie que cette
 version corresponde à celle de la cible embarquée — le conteneur reste la
 référence pour un build destiné à tourner sur le véhicule.
+
+### Sur Raspberry Pi 5 avec Camera Module 3
+
+Cas particulier du build local, pour exécuter le programme sur la cible avec
+la caméra CSI. **Compiler directement sur le Pi** plutôt que d'y copier un
+exécutable construit dans Docker : l'image Docker (Debian Bookworm) fournit
+OpenCV 4.6, alors que Raspberry Pi OS fournit une autre version (4.10 sur la
+machine de référence) — un exécutable lié à l'une ne trouve pas les
+bibliothèques de l'autre.
+
+```sh
+sudo apt update
+sudo apt install \
+  build-essential cmake pkg-config \
+  libopencv-dev \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-libcamera \
+  gstreamer1.0-tools
+```
+
+| Paquet | Rôle | Nécessaire ? |
+|---|---|---|
+| `build-essential` | compilateur C++ (`g++`), `make` | pour compiler |
+| `cmake` | outil de build du projet (≥ 3.18) | pour compiler |
+| `pkg-config` | résolution des dépendances de build | pour compiler |
+| `libopencv-dev` | OpenCV (en-têtes + bibliothèques), compilé avec le backend GStreamer | oui |
+| `gstreamer1.0-plugins-base` | `videoconvert` et `appsink` (fin de pipeline ajoutée par le programme), `videotestsrc` (tests) | oui |
+| `gstreamer1.0-libcamera` | élément `libcamerasrc` : lit la caméra CSI via libcamera ; installe la version de libcamera qui lui correspond | pour la caméra |
+| `gstreamer1.0-tools` | `gst-launch-1.0`, `gst-inspect-1.0`, pour diagnostiquer un pipeline | recommandé |
+
+Déjà présents sur Raspberry Pi OS, sans rien installer : libcamera et ses
+modules de réglage pour l'ISP du Pi 5 (dont le fichier de tuning de l'imx708),
+et `rpicam-apps` (`rpicam-hello`), utile seulement pour vérifier que la caméra
+est vue. L'utilisateur doit appartenir au groupe `video` (c'est le cas de
+l'utilisateur par défaut). Docker et `libcamera-v4l2` (`libcamerify`) ne sont
+pas nécessaires.
+
+Compiler, vérifier l'installation, puis lancer sur la caméra :
+
+```sh
+cmake -S . -B build && cmake --build build -j
+./build/line_detector_tests
+rpicam-hello --list-cameras
+./build/line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=1280,height=720,format=NV12"
+```
+
+`line_detector_tests` vérifie aussi l'installation : s'il manque le backend
+GStreamer d'OpenCV ou `gstreamer1.0-plugins-base`, les tests de
+`from_gstreamer` échouent avec un message qui le dit. `rpicam-hello
+--list-cameras` doit lister l'imx708. Le `format=NV12` du pipeline est
+indispensable (cf. [Source GStreamer](#source-gstreamer)).
+
+Validé sur Raspberry Pi 5 + Camera Module 3 (imx708), libcamera 0.7.2.
 
 ## Utilisation du programme
 
