@@ -3,8 +3,11 @@
 # ---------------------------------------------------------------------
 # Un conteneur part toujours d'une "image de base" : un système Linux
 # minimal. On choisit Debian 12 ("bookworm") car ses dépôts contiennent
-# OpenCV, la dépendance du projet. Le conteneur sert surtout à obtenir un
-# build reproductible, identique à la cible Raspberry Pi.
+# OpenCV, la dépendance du projet. Le conteneur sert à obtenir un build
+# reproductible sur une machine de dev sans OpenCV, et à lancer les tests.
+# Il n'est PAS identique à la cible Raspberry Pi : Bookworm fournit OpenCV
+# 4.6, Raspberry Pi OS une autre version. Pour tourner sur le Pi, compiler
+# en natif sur le Pi (cf. README, « Natif — Raspberry Pi 5 »).
 # Le suffixe "-slim" = version allégée (moins de paquets inutiles).
 # =====================================================================
 FROM debian:bookworm-slim

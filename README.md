@@ -475,19 +475,25 @@ d'être calculées puis jetées.
 
 ## Prérequis
 
-OpenCV n'est volontairement pas installé sur la machine hôte de développement
-(macOS ici) — tout se compile et s'exécute dans un conteneur Docker basé sur
-`debian:bookworm-slim`, avec `libopencv-dev` installé via `apt`. C'est la voie
-recommandée, y compris pour du développement quotidien : le conteneur garantit
-la même version d'OpenCV que la cible embarquée.
+Le programme se compile de **deux façons**, au choix (détail dans
+[Installation et exécution](#installation-et-exécution)) :
 
-- [Docker](https://www.docker.com/products/docker-desktop/) installé et
-  démarré (sur macOS : lancer Docker Desktop avant toute commande `docker`).
-- Pour éditer avec VS Code en profitant de l'intégration Dev Containers :
-  l'extension **Dev Containers** (`ms-vscode-remote.remote-containers`).
-- Pour générer des images de test synthétiques : Python 3 et Pillow
-  (`pip install pillow`) — uniquement nécessaire côté hôte, le conteneur n'en
-  a pas besoin.
+- **Dans Docker** — sur une machine de développement où OpenCV n'est pas
+  installé. Le conteneur (`debian:bookworm-slim` + `libopencv-dev`
+  via `apt`) donne un build reproductible et fait tourner les tests. Prérequis :
+  - [Docker](https://www.docker.com/products/docker-desktop/) installé et
+    démarré (sur macOS : lancer Docker Desktop avant toute commande `docker`) ;
+  - pour éditer avec VS Code dans le conteneur : l'extension **Dev
+    Containers** (`ms-vscode-remote.remote-containers`).
+- **En natif** — directement sur une machine Linux (ou macOS) où OpenCV est
+  installé. C'est **la voie obligatoire sur la cible** (Raspberry Pi 5) pour
+  utiliser la caméra : un exécutable compilé dans Docker ne tourne pas sur le
+  Pi, car l'image Docker fournit OpenCV 4.6 et Raspberry Pi OS une autre
+  version (par exemple 4.10). Prérequis : les paquets listés
+  dans [Natif — Raspberry Pi 5 avec Camera Module 3](#natif--raspberry-pi-5-avec-camera-module-3).
+
+Dans les deux cas, pour générer des images de test synthétiques : Python 3 et
+Pillow (`pip install pillow`), côté hôte uniquement.
 
 Le dépôt ne versionne pas d'images d'entrée (`img_piste/` est dans
 `.gitignore` — les fichiers y sont trop lourds pour être suivis en Git). Deux
@@ -505,12 +511,18 @@ la reconstruction). On peut aussi déposer n'importe quelle photo de route dans
 
 ## Installation et exécution
 
-Il existe trois façons d'obtenir un exécutable, selon l'outillage disponible.
-Les trois compilent exactement le même code — seule la manière d'atteindre un
-environnement avec OpenCV change. Pour la cible, voir
-[Sur Raspberry Pi 5 avec Camera Module 3](#sur-raspberry-pi-5-avec-camera-module-3).
+Deux façons de compiler, qui produisent exactement le même programme — seule
+la manière d'obtenir OpenCV change :
 
-### Docker uniquement, en une commande depuis l'hôte
+| Voie | Où | Quand l'utiliser | Sections |
+|---|---|---|---|
+| **Docker** | sur n'importe quelle machine avec Docker, sans OpenCV installé | développement quotidien, tests, traitement d'images et de fichiers vidéo | les trois sections « Docker — … » |
+| **Natif** | sur une machine où OpenCV est installé | exécution sur la cible (Raspberry Pi 5 + caméra), ou machine de dev déjà équipée | les deux sections « Natif — … » |
+
+Un exécutable compilé dans Docker ne s'exécute que dans Docker : pour faire
+tourner le programme sur le Raspberry Pi, **compiler en natif sur le Pi**.
+
+### Docker — en une commande depuis l'hôte
 
 C'est le chemin le plus direct : pas besoin d'ouvrir un shell dans le
 conteneur. On construit l'image une fois :
@@ -537,7 +549,7 @@ n'y pollue le dépôt.
 
 Le résultat annoté atterrit dans `out/output.jpg`.
 
-### Docker en boucle de développement interactive
+### Docker — boucle de développement interactive
 
 Pour itérer sans relancer une commande Docker complète à chaque fois, on ouvre
 un shell dans le conteneur une bonne fois, et on recompile depuis là :
@@ -573,7 +585,7 @@ Recompiler après une modification se limite alors à relancer la ligne
 > le dossier de build (`rm -rf build-linux`) et reconfigurer, ou utiliser un
 > dossier de build différent par contexte (`cmake -S . -B build-autre`).
 
-### Avec VS Code (Dev Containers)
+### Docker — avec VS Code (Dev Containers)
 
 VS Code peut ouvrir le projet directement à l'intérieur du même conteneur, en
 réutilisant le `Dockerfile` existant (`.devcontainer/devcontainer.json` s'y
@@ -582,41 +594,41 @@ réfère, il n'y a pas de configuration dupliquée) :
 1. Installer l'extension **Dev Containers**.
 2. `Cmd/Ctrl + Shift + P` → **« Dev Containers: Reopen in Container »**.
 3. Une fois le conteneur ouvert, utiliser un terminal intégré avec les mêmes
-   commandes que la section précédente (« boucle de développement
+   commandes que la section précédente (« Docker — boucle de développement
    interactive ») — le shell est déjà dans le conteneur, il n'y a pas de
    `docker run` à taper.
 
 Le dossier de build est réglé sur `build-linux/` par
 `.devcontainer/devcontainer.json` (`cmake.buildDirectory`), délibérément
 distinct d'un éventuel `build/` généré en dehors du conteneur — les deux
-caches CMake, l'un pointant vers un toolchain Linux et l'autre vers macOS, ne
+caches CMake, l'un pointant vers un toolchain Linux et l'autre vers celui de l'hôte, ne
 doivent jamais se mélanger (cf. le piège ci-dessus). Les extensions C++ et
 CMake Tools sont installées automatiquement dans le conteneur, avec
 autocomplétion et configuration CMake via l'interface VS Code.
 
-### Sans conteneur, en local
+### Natif — machine avec OpenCV installé
 
-Si OpenCV est déjà installé au niveau système (par exemple via Homebrew sur
-macOS, ou le paquet `libopencv-dev` d'une distribution Linux), le build
-générique fonctionne aussi, sans Docker :
+Si OpenCV est installé au niveau système (par exemple via Homebrew sur macOS,
+ou le paquet `libopencv-dev` d'une distribution Linux), le build se fait
+directement, sans Docker :
 
 ```sh
-mkdir build && cd build && cmake .. && make
+cmake -S . -B build && cmake --build build -j
+./build/line_detector image --file img_piste/img2.jpg --record
 ```
 
-C'est la voie la plus rapide pour itérer si l'environnement local dispose déjà
-de la bonne version d'OpenCV, mais elle n'offre aucune garantie que cette
-version corresponde à celle de la cible embarquée — le conteneur reste la
-référence pour un build destiné à tourner sur le véhicule.
+L'exécutable est lié à la version d'OpenCV de cette machine. Pour la source
+`--gstreamer`, OpenCV doit avoir été compilé avec le backend GStreamer (c'est
+le cas des paquets Debian et Raspberry Pi OS ; `./build/line_detector_tests`
+le vérifie).
 
-### Sur Raspberry Pi 5 avec Camera Module 3
+### Natif — Raspberry Pi 5 avec Camera Module 3
 
-Cas particulier du build local, pour exécuter le programme sur la cible avec
-la caméra CSI. **Compiler directement sur le Pi** plutôt que d'y copier un
-exécutable construit dans Docker : l'image Docker (Debian Bookworm) fournit
-OpenCV 4.6, alors que Raspberry Pi OS fournit une autre version (4.10 sur la
-machine de référence) — un exécutable lié à l'une ne trouve pas les
-bibliothèques de l'autre.
+La voie à suivre pour exécuter le programme sur la cible avec la caméra CSI :
+**compiler directement sur le Pi**. Un exécutable construit dans Docker n'y
+tourne pas : l'image Docker (Debian Bookworm) fournit OpenCV 4.6, alors que
+Raspberry Pi OS fournit une autre version (par exemple 4.10),
+et un exécutable lié à l'une ne trouve pas les bibliothèques de l'autre.
 
 ```sh
 sudo apt update
@@ -724,7 +736,7 @@ Prérequis : OpenCV compilé avec le backend GStreamer (c'est le cas des paquets
 Debian) et `gstreamer1.0-plugins-base`.
 
 **Limite connue** : si le **premier** élément du pipeline n'existe pas (faute
-de frappe, plugin non installé), OpenCV (4.6, mesuré) reste bloqué à
+de frappe, plugin non installé), OpenCV (constaté avec la version 4.6) reste bloqué à
 l'ouverture, sans message ; `Ctrl-C` termine le programme. Vérifier d'abord
 la source hors programme (`gst-launch-1.0` est fourni par le paquet
 `gstreamer1.0-tools`, à installer avec `sudo apt install gstreamer1.0-tools`) :
@@ -821,7 +833,9 @@ LINE_DETECTOR_DEBUG=1 ./build-linux/line_detector image --file img_piste/img2.jp
 ```
 
 ```sh
-LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector image --file data/img_piste/img2.jpg --record
+LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="/tmp/line_detector_out" ./build-linux/line_detector image --file img_piste/img2.jpg --record
+
+LINE_DETECTOR_DEBUG=1 LINE_DETECTOR_OUT="data/out" ./build-linux/line_detector image --file data/img_piste/test.jpg --record
 ```
 
 | Fichier | Contenu | Condition |
@@ -871,7 +885,10 @@ parallèles.
 
 Suite de tests unitaires `doctest` (header unique vendored dans
 `tests/doctest.h`, pas de dépendance externe à installer), cible CMake séparée
-`line_detector_tests` :
+`line_detector_tests`. Elle se lance dans les deux voies de compilation.
+
+En natif (par exemple sur le Raspberry Pi), ou dans un shell ouvert dans le
+conteneur :
 
 ```sh
 cmake -S . -B build-linux
@@ -879,7 +896,8 @@ cmake --build build-linux --target line_detector_tests -j
 ./build-linux/line_detector_tests
 ```
 
-Ou depuis l'hôte en une commande, sur le même modèle que la compilation :
+Dans Docker, depuis l'hôte en une commande, sur le même modèle que la
+compilation :
 
 ```sh
 docker run --rm -v "$(pwd):/app" -w /app line-detector \
@@ -920,3 +938,10 @@ autour du fit de la frame précédente (qui accélérerait le traitement en
 suppose une caméra sans distorsion notable) et le passage d'un signal en
 pixels à un signal en unités métriques, qui suppose une calibration
 caméra/sol supplémentaire.
+
+commandes :
+LINE_DETECTOR_DEBUG=1 ./line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=1280,height=720,format=NV12" --record
+
+LINE_DETECTOR_DEBUG=1 ./line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=2304,height=1296,format=NV12 ! videoscale ! video/x-raw,width=1280,height=720" --record
+
+LINE_DETECTOR_DEBUG=1 ./line_detector video --gstreamer "libcamerasrc ! video/x-raw,width=2304,height=1296,format=NV12" --record
