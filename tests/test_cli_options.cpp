@@ -303,7 +303,47 @@ TEST_CASE( "parse_arguments : --gstreamer avec appsink -> pipeline complet refus
     parse( { "video", "--gstreamer", "videotestsrc ! videoconvert ! video/x-raw,format=BGR ! appsink" }, options );
 
   CHECK( EXIT_FAILURE == status );
-  CHECK( error_mentions( options, "sans appsink" ) );
+  CHECK( error_mentions( options, "sans element sink" ) );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer avec un autre sink -> pipeline complet refuse" )
+{
+  // Commande de verification du README collee telle quelle : bloquerait l'ouverture.
+  CliOptions fakesink_options;
+  const int fakesink_status = parse( { "video", "--gstreamer", "videotestsrc ! videoconvert ! fakesink" }, fakesink_options );
+
+  CliOptions filesink_options;
+  const int filesink_status =
+    parse( { "video", "--gstreamer", "videotestsrc ! filesink location=/tmp/o" }, filesink_options );
+
+  CHECK( EXIT_FAILURE == fakesink_status );
+  CHECK( error_mentions( fakesink_options, "sans element sink" ) );
+  CHECK( EXIT_FAILURE == filesink_status );
+  CHECK( error_mentions( filesink_options, "sans element sink" ) );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer avec 'sink' hors nom d'element -> accepte" )
+{
+  CliOptions options;
+
+  const int status = parse( { "video", "--gstreamer", "filesrc location=/data/appsink_run.mkv ! decodebin" }, options );
+
+  CHECK( EXIT_SUCCESS == status );
+  CHECK( SOURCE_KIND_GSTREAMER == options.source_kind );
+}
+
+TEST_CASE( "parse_arguments : --gstreamer avec element vide -> refuse" )
+{
+  CliOptions trailing_options;
+  const int trailing_status = parse( { "video", "--gstreamer", "videotestsrc num-buffers=3 !" }, trailing_options );
+
+  CliOptions double_options;
+  const int double_status = parse( { "video", "--gstreamer", "videotestsrc ! ! queue" }, double_options );
+
+  CHECK( EXIT_FAILURE == trailing_status );
+  CHECK( error_mentions( trailing_options, "element vide" ) );
+  CHECK( EXIT_FAILURE == double_status );
+  CHECK( error_mentions( double_options, "element vide" ) );
 }
 
 TEST_CASE( "parse_arguments : index camera non numerique -> echec" )

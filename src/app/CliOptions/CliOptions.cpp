@@ -22,7 +22,10 @@ const ::std::string FLAG_FILE = "--file";             ///< Source : fichier.
 const ::std::string FLAG_CAMERA = "--camera";         ///< Source : caméra.
 const ::std::string FLAG_GSTREAMER = "--gstreamer";   ///< Source : partie source d'un pipeline GStreamer.
 const ::std::string FLAG_RECORD = "--record";         ///< Flag d'écriture du résultat.
-const ::std::string GSTREAMER_SINK_ELEMENT = "appsink";  ///< Ajouté par VideoFrameSource : interdit dans la valeur.
+const char GSTREAMER_LINK = '!';                      ///< Séparateur d'éléments d'un pipeline GStreamer.
+const ::std::string GSTREAMER_SINK_SUFFIX = "sink";   ///< Suffixe des éléments puits (appsink, fakesink...).
+const ::std::string WHITESPACE_CHARACTERS = " \t\n\r\f\v";     ///< Espaces autour d'un nom d'élément.
+const ::std::string ELEMENT_NAME_TERMINATORS = " \t\n\r\f\v,";  ///< Fin du nom d'élément (propriétés, caps).
 
 const ::std::string ERROR_MISSING_COMMAND = "Sous-commande manquante : image ou video";  ///< argv[1] absent ou flag.
 const ::std::string ERROR_UNKNOWN_COMMAND = "Sous-commande inconnue : ";                ///< argv[1] non reconnu.
@@ -33,8 +36,10 @@ const ::std::string ERROR_CONFLICTING_SOURCES =
 const ::std::string ERROR_NOT_WITH_IMAGE = " n'est pas disponible avec image";  ///< Source non supportée par image.
 const ::std::string ERROR_MISSING_VALUE = "Valeur manquante apres : ";          ///< Flag sans valeur exploitable.
 const ::std::string ERROR_GSTREAMER_SINK =
-  "--gstreamer attend seulement la partie source du pipeline (sans appsink) : "
+  "--gstreamer attend seulement la partie source du pipeline (sans element sink) : "
   "la fin est ajoutee par le programme";  ///< Pipeline complet collé par habitude.
+const ::std::string ERROR_GSTREAMER_EMPTY_ELEMENT =
+  "--gstreamer : element vide dans le pipeline (\"!\" en trop ?)";  ///< "!" final ou doublé.
 const ::std::string ERROR_UNKNOWN_FLAG = "Flag inconnu : ";                     ///< Flag non reconnu.
 const ::std::string ERROR_POSITIONAL = "Argument positionnel non supporte : ";  ///< argv nu en trop.
 const ::std::string ERROR_CAMERA_INDEX = "Index camera invalide : ";            ///< Index non numérique.
@@ -105,6 +110,82 @@ bool read_required_value( int p_argument_count, char** p_arguments, int p_flag_i
 
   p_value = candidate_value;
   return true;
+  }
+
+/// @brief Indique si une chaîne se termine par un suffixe donné.
+/// @param p_text   Chaîne à tester.
+/// @param p_suffix Suffixe attendu.
+/// @return true si p_text se termine par p_suffix.
+bool ends_with( const ::std::string& p_text, const ::std::string& p_suffix )
+  {
+  const bool is_long_enough = ( p_text.size() >= p_suffix.size() );
+
+  if ( !is_long_enough )
+    {
+    return false;
+    }
+
+  const ::std::string::size_type suffix_start = p_text.size() - p_suffix.size();
+  const bool has_suffix = ( 0 == p_text.compare( suffix_start, p_suffix.size(), p_suffix ) );
+  return has_suffix;
+  }
+
+/// @brief Extrait le nom d'un élément GStreamer : premier mot, avant les propriétés ou les caps.
+/// @param p_element Élément tel qu'écrit entre deux "!".
+/// @return Nom de l'élément, vide si l'élément est blanc.
+::std::string element_name( const ::std::string& p_element )
+  {
+  const ::std::string::size_type name_start = p_element.find_first_not_of( WHITESPACE_CHARACTERS );
+  const bool is_blank_element = ( ::std::string::npos == name_start );
+
+  if ( is_blank_element )
+    {
+    return ::std::string();
+    }
+
+  const ::std::string::size_type name_end = p_element.find_first_of( ELEMENT_NAME_TERMINATORS, name_start );
+  const ::std::string name = p_element.substr( name_start, name_end - name_start );
+  return name;
+  }
+
+/// @brief Vérifie la partie source d'un pipeline GStreamer avant son ouverture.
+///
+/// Rejette les deux formes qui bloquent VideoCapture::open au lieu d'échouer :
+/// un élément vide ("!" final ou doublé, la fin ajoutée commençant par "!") et
+/// un élément puits (pipeline complet collé par habitude, par exemple la
+/// commande gst-launch-1.0 de vérification terminée par fakesink).
+/// @param p_source_pipeline Partie source fournie par l'utilisateur (non blanche).
+/// @return Message d'erreur, vide si la partie source est acceptable.
+::std::string check_gstreamer_source( const ::std::string& p_source_pipeline )
+  {
+  ::std::string::size_type element_start = 0;
+  bool has_more_elements = true;
+
+  while ( has_more_elements )
+    {
+    const ::std::string::size_type link_position = p_source_pipeline.find( GSTREAMER_LINK, element_start );
+    has_more_elements = ( ::std::string::npos != link_position );
+    const ::std::string::size_type element_length =
+      has_more_elements ? ( link_position - element_start ) : ::std::string::npos;
+    const ::std::string element = p_source_pipeline.substr( element_start, element_length );
+    const ::std::string name = element_name( element );
+    const bool is_empty_element = name.empty();
+    const bool is_sink_element = ends_with( name, GSTREAMER_SINK_SUFFIX );
+
+    if ( is_empty_element )
+      {
+      return ERROR_GSTREAMER_EMPTY_ELEMENT;
+      }
+
+    if ( is_sink_element )
+      {
+      return ERROR_GSTREAMER_SINK;
+      }
+
+    element_start = link_position + 1;
+    }
+
+  return ::std::string();
   }
 
 /// @brief Convertit un index caméra écrit en décimal.
@@ -222,13 +303,14 @@ int parse_arguments( int p_argument_count, char** p_arguments, CliOptions& p_opt
         return EXIT_FAILURE;
         }
 
-      // Un pipeline complet (collé par habitude) bloquerait l'ouverture : la
-      // fin est ajoutée par VideoFrameSource::from_gstreamer.
-      const bool contains_sink = ( ::std::string::npos != p_options.gstreamer_pipeline.find( GSTREAMER_SINK_ELEMENT ) );
+      // Un élément vide ou un puits bloquerait l'ouverture au lieu d'échouer :
+      // la fin du pipeline est ajoutée par VideoFrameSource::from_gstreamer.
+      const ::std::string source_error = check_gstreamer_source( p_options.gstreamer_pipeline );
+      const bool source_is_valid = source_error.empty();
 
-      if ( contains_sink )
+      if ( !source_is_valid )
         {
-        p_options.error_message = ERROR_GSTREAMER_SINK;
+        p_options.error_message = source_error;
         return EXIT_FAILURE;
         }
 

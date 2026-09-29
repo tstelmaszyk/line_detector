@@ -645,8 +645,10 @@ ajoute lui-même la fin :
 
 Le détecteur exige du BGR, et `drop=true max-buffers=1` garde toujours la
 frame la plus récente : si le traitement est plus lent que la caméra, les
-frames en retard sont jetées au lieu de s'accumuler. Une valeur contenant
-`appsink` (pipeline complet collé par habitude) est rejetée.
+frames en retard sont jetées au lieu de s'accumuler. Une valeur contenant un
+élément puits (`appsink`, `fakesink`… : pipeline complet collé par habitude)
+ou un élément vide (`!` final ou doublé) est rejetée, car OpenCV resterait
+bloqué à l'ouverture au lieu d'échouer.
 
 Exemple, Camera Module 3 sur Raspberry Pi 5 — **pas encore validé sur le
 matériel**. Sur le Pi 5, la caméra CSI passe par la pile libcamera :

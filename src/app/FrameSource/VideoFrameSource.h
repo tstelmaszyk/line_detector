@@ -45,7 +45,8 @@ class VideoFrameSource final : public FrameSource
     /// Limite connue (OpenCV 4.6) : si le premier élément n'existe pas,
     /// l'ouverture ne rend jamais la main. Un élément inconnu ailleurs dans le
     /// pipeline donne nullptr.
-    /// @param p_source_pipeline Partie source du pipeline : non blanche, sans appsink.
+    /// @param p_source_pipeline Partie source du pipeline : non vide, sans élément
+    ///        vide ni élément puits (vérifié par parse_arguments).
     /// @return Source ouverte, ou nullptr si le pipeline ne peut pas être
     ///         démarré (élément inconnu, backend GStreamer absent d'OpenCV).
     static ::std::unique_ptr< VideoFrameSource > from_gstreamer( const ::std::string& p_source_pipeline );
