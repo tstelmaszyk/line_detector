@@ -35,6 +35,21 @@ class VideoFrameSource final : public FrameSource
     /// @return Source ouverte, ou nullptr si la caméra est indisponible.
     static ::std::unique_ptr< VideoFrameSource > from_camera( CameraIndex p_camera_index );
 
+    /// @brief Fabrique une source lisant un pipeline GStreamer.
+    ///
+    /// L'appelant ne fournit que la partie source (par exemple
+    /// "libcamerasrc ! video/x-raw,width=1280,height=720") ; la fabrique
+    /// ajoute la fin du pipeline (conversion BGR et appsink), qui est une
+    /// exigence du programme et non un choix de l'utilisateur.
+    ///
+    /// Limite connue (OpenCV 4.6) : si le premier élément n'existe pas,
+    /// l'ouverture ne rend jamais la main. Un élément inconnu ailleurs dans le
+    /// pipeline donne nullptr.
+    /// @param p_source_pipeline Partie source du pipeline : non blanche, sans appsink.
+    /// @return Source ouverte, ou nullptr si le pipeline ne peut pas être
+    ///         démarré (élément inconnu, backend GStreamer absent d'OpenCV).
+    static ::std::unique_ptr< VideoFrameSource > from_gstreamer( const ::std::string& p_source_pipeline );
+
     /// @brief Non copiable : possède une cv::VideoCapture ouverte sur une ressource.
     VideoFrameSource( const VideoFrameSource& p_other ) = delete;
 

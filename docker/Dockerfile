@@ -18,6 +18,10 @@ FROM debian:bookworm-slim
 #   - cmake           : l'outil de build du projet
 #   - pkg-config      : utilitaire de résolution de dépendances de build
 #   - libopencv-dev   : OpenCV (en-têtes + libs) -> find_package(OpenCV)
+#   - gstreamer1.0-plugins-base : videotestsrc, videoconvert, appsink, pour
+#                     les tests de VideoFrameSource::from_gstreamer (deja tire
+#                     par libopencv-dev aujourd'hui ; explicite pour ne pas en
+#                     dependre par accident)
 #
 # Astuce : on enchaîne update + install + nettoyage dans UN SEUL RUN.
 # Chaque RUN crée une "couche" (layer) dans l'image ; en regroupant et
@@ -28,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake \
         pkg-config \
         libopencv-dev \
+        gstreamer1.0-plugins-base \
     && rm -rf /var/lib/apt/lists/*
 
 # =====================================================================

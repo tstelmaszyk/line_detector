@@ -3,6 +3,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/videoio.hpp>
+#include <opencv2/videoio/registry.hpp>
 
 #include <fstream>
 #include <memory>
@@ -68,6 +69,23 @@ const int TEST_VIDEO_GRAY_STEP = 20;          ///< Ecart de gris entre deux fram
   return full_path;
   }
 
+const int GSTREAMER_TEST_FRAME_COUNT = 5;  ///< Frames produites par videotestsrc (num-buffers).
+
+/// @brief Partie source d'un pipeline de test, sans caméra : 5 frames 64x48.
+const ::std::string GSTREAMER_TEST_SOURCE =
+  "videotestsrc num-buffers=" + ::std::to_string( GSTREAMER_TEST_FRAME_COUNT )
+  + " ! video/x-raw,width=" + ::std::to_string( TEST_IMAGE_WIDTH )
+  + ",height=" + ::std::to_string( TEST_IMAGE_HEIGHT );
+
+/// @brief Exige le backend GStreamer d'OpenCV : échec explicite s'il manque, jamais ignoré.
+void require_gstreamer_backend()
+  {
+  const bool has_gstreamer = ::cv::videoio_registry::hasBackend( ::cv::CAP_GSTREAMER );
+  INFO( "Backend GStreamer absent d'OpenCV : installer un OpenCV compile avec GStreamer "
+        "et le paquet gstreamer1.0-plugins-base (image Docker ou Pi)." );
+  REQUIRE( has_gstreamer );
+  }
+
 } // namespace
 
 TEST_CASE( "ImageFrameSource : une frame puis fin de flux" )
@@ -131,6 +149,57 @@ TEST_CASE( "VideoFrameSource : fichier absent -> nullptr" )
   const ::std::string missing_path = test_temp_dir() + "/video_absente_line_detector.avi";
 
   const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_file( missing_path );
+
+  CHECK( nullptr == source );
+}
+
+TEST_CASE( "VideoFrameSource::from_gstreamer : frames BGR puis fin de flux" )
+{
+  require_gstreamer_backend();
+
+  const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_gstreamer( GSTREAMER_TEST_SOURCE );
+  REQUIRE( nullptr != source );
+
+  int read_count = 0;
+  ::cv::Mat frame;
+  bool read_ok = source->read( frame );
+
+  while ( read_ok )
+    {
+    ++read_count;
+    CHECK( TEST_IMAGE_WIDTH == frame.cols );
+    CHECK( TEST_IMAGE_HEIGHT == frame.rows );
+    CHECK( CV_8UC3 == frame.type() );
+    read_ok = source->read( frame );
+    }
+
+  CHECK( GSTREAMER_TEST_FRAME_COUNT == read_count );
+}
+
+TEST_CASE( "VideoFrameSource::from_gstreamer : espaces autour de la source acceptes" )
+{
+  require_gstreamer_backend();
+
+  const ::std::string padded_source = "  " + GSTREAMER_TEST_SOURCE + "  ";
+  const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_gstreamer( padded_source );
+  REQUIRE( nullptr != source );
+
+  ::cv::Mat frame;
+  const bool read_ok = source->read( frame );
+
+  CHECK( true == read_ok );
+  CHECK( CV_8UC3 == frame.type() );
+}
+
+TEST_CASE( "VideoFrameSource::from_gstreamer : element inconnu au milieu -> nullptr" )
+{
+  require_gstreamer_backend();
+
+  // Element inconnu au milieu uniquement : un premier element inconnu bloque
+  // l'ouverture dans OpenCV (limite connue, cf. spec), il n'est donc pas teste.
+  const ::std::string broken_source = "videotestsrc num-buffers=5 ! nexistepas_line_detector";
+
+  const ::std::unique_ptr< VideoFrameSource > source = VideoFrameSource::from_gstreamer( broken_source );
 
   CHECK( nullptr == source );
 }

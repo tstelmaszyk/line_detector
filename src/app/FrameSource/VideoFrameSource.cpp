@@ -6,6 +6,22 @@
 #include <utility>
 
 #include "FrameSource/VideoFrameSource.h"
+#include "SmartAssert/SmartAssert.h"
+
+namespace
+{
+
+/// @brief Fin de pipeline ajoutée par from_gstreamer à la partie source fournie.
+///
+/// - videoconvert + format=BGR : le détecteur exige du BGR ; l'imposer ici évite
+///   qu'un oubli de l'utilisateur produise un échec obscur.
+/// - appsink drop=true max-buffers=1 : en direct, garde toujours la frame la plus
+///   récente ; sans cela, un traitement plus lent que la source accumule un
+///   retard qui grandit indéfiniment.
+const ::std::string GSTREAMER_PIPELINE_TAIL =
+  " ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1";
+
+} // namespace
 
 VideoFrameSource::VideoFrameSource()
   : m_capture()
@@ -36,6 +52,19 @@ VideoFrameSource::VideoFrameSource()
 {
   ::std::unique_ptr< VideoFrameSource > source( new VideoFrameSource() );
   source->m_capture.open( p_camera_index );
+  return keep_if_opened( ::std::move( source ) );
+}
+
+::std::unique_ptr< VideoFrameSource > VideoFrameSource::from_gstreamer( const ::std::string& p_source_pipeline )
+{
+  // Précondition garantie par parse_arguments : une source vide bloquerait l'ouverture.
+  const bool is_empty = p_source_pipeline.empty();
+  SMART_ASSERT( !is_empty, "from_gstreamer appele avec une partie source vide" );
+
+  const ::std::string full_pipeline = p_source_pipeline + GSTREAMER_PIPELINE_TAIL;
+
+  ::std::unique_ptr< VideoFrameSource > source( new VideoFrameSource() );
+  source->m_capture.open( full_pipeline, ::cv::CAP_GSTREAMER );
   return keep_if_opened( ::std::move( source ) );
 }
 
