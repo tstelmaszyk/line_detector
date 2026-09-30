@@ -57,6 +57,9 @@ ce qui est spécifique à ce véhicule : elle prend une image, elle rend
 un modèle de voie, point. Rien dans `line_detector_lib` ne lit `argv`, n'écrit
 sur `stdout`, ni ne sait qu'une caméra existe.
 
+
+![til](output_examples/eec253921.gif)
+
 ## Le pipeline, étape par étape
 
 ```
